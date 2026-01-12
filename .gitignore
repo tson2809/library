@@ -1,0 +1,41 @@
+# Build results
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio & IDEs
+.vs/
+.vscode/
+*.rsuser
+*.VC.db
+*.VC.opendb
+
+# Ignore test & temporary folders
+test/
+*.log
+
+# NuGet & Artifacts
+packages/
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Environment secrets
+.env
+.env.local
+.env.*.local
+
+# OS generated files
+Thumbs.db
+Desktop.ini
+.DS_Store
