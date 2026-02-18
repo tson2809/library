@@ -1,0 +1,210 @@
+@model Client_web.Models.ViewModels.ProfileVm
+@{
+	ViewData["Title"] = "Hồ sơ cá nhân";
+	var activeTab = (ViewBag.ActiveTab as string ?? "info").ToLowerInvariant();
+	var showInfoTab = activeTab != "password";
+	var avatarUrl = string.IsNullOrWhiteSpace(Model.AvatarUrl)
+		? (Context.Session.GetString("Auth.AvatarUrl") ?? "/images/avatar/default.jpg")
+		: Model.AvatarUrl;
+}
+
+<div class="row justify-content-center profile-page">
+	<div class="col-12 col-xl-10">
+		<h3 class="mb-3 profile-title">Hồ sơ cá nhân</h3>
+
+		@if (TempData["Success"] is string successMessage && !string.IsNullOrWhiteSpace(successMessage))
+		{
+			<div class="alert alert-success">@successMessage</div>
+		}
+		@if (TempData["Error"] is string errorMessage && !string.IsNullOrWhiteSpace(errorMessage))
+		{
+			<div class="alert alert-danger">@errorMessage</div>
+		}
+
+		<ul class="nav nav-tabs mb-3 profile-tabs">
+			<li class="nav-item">
+				<a class="nav-link @(showInfoTab ? "active" : string.Empty)" asp-action="Profile" asp-route-tab="info">Thông tin</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link @(!showInfoTab ? "active" : string.Empty)" asp-action="Profile" asp-route-tab="password">Đổi mật khẩu</a>
+			</li>
+		</ul>
+
+		@if (showInfoTab)
+		{
+			<div class="card shadow-sm profile-card">
+				<div class="card-body profile-card-body">
+					<div class="row g-4">
+						<div class="col-lg-4 text-center">
+							<img id="profileAvatarPreview" src="@avatarUrl" alt="Ảnh đại diện" class="img-thumbnail rounded-circle mb-3 profile-avatar" />
+							<input id="avatarFile" name="avatarFile" type="file" class="d-none" accept=".png,.jpg,.jpeg,.webp" form="profileInfoForm" />
+							<div class="d-flex justify-content-center mb-2">
+								<button type="button" class="btn btn-outline-secondary" id="chooseAvatarBtn">Ảnh đại diện mới</button>
+							</div>
+							<div class="small text-muted">Tải ảnh PNG/JPG/JPEG/WEBP, tối đa 5MB</div>
+						</div>
+
+						<div class="col-lg-8">
+							<form id="profileInfoForm" asp-action="UpdateProfile" method="post" enctype="multipart/form-data" novalidate>
+								@Html.AntiForgeryToken()
+
+								<div class="mb-3">
+									<label class="form-label" for="newUsername">Tên đăng nhập</label>
+									<input id="newUsername" name="newUsername" class="form-control" value="@Model.Username" required />
+								</div>
+
+								<div class="mb-3">
+									<label class="form-label" for="fullNameReadonly">Họ tên</label>
+									<input id="fullNameReadonly" class="form-control" value="@Model.FullName" readonly />
+								</div>
+
+								<div class="mb-3">
+									<label class="form-label" for="emailReadonly">Email</label>
+									<input id="emailReadonly" class="form-control" value="@(Model.Email ?? string.Empty)" readonly />
+								</div>
+
+								<div class="mb-3">
+									<label class="form-label" for="phone">Số điện thoại</label>
+									<input id="phone" name="phone" class="form-control" value="@(Model.Phone ?? string.Empty)" />
+								</div>
+
+								<div class="d-flex justify-content-end gap-2">
+									<button type="button" class="btn btn-outline-secondary" id="profileInfoResetBtn">Hủy</button>
+									<button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		}
+		else
+		{
+			<div class="card shadow-sm profile-card">
+				<div class="card-body profile-card-body">
+					<form id="changePasswordForm" asp-action="ChangePassword" method="post" novalidate>
+						@Html.AntiForgeryToken()
+
+						<div class="mb-3">
+							<label class="form-label" for="oldPassword">Mật khẩu hiện tại</label>
+							<div class="input-group">
+								<input id="oldPassword" name="oldPassword" type="password" class="form-control" required />
+								<button type="button" class="btn btn-outline-secondary btn-toggle-password" data-target="oldPassword" aria-label="Hiện/ẩn mật khẩu">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+										<path d="M8 3C4.8 3 2.1 5 1 8c1.1 3 3.8 5 7 5s5.9-2 7-5c-1.1-3-3.8-5-7-5zm0 8.5A3.5 3.5 0 1 1 8 4.5a3.5 3.5 0 0 1 0 7zm0-1.8A1.7 1.7 0 1 0 8 6.3a1.7 1.7 0 0 0 0 3.4z"/>
+									</svg>
+								</button>
+							</div>
+						</div>
+
+						<div class="mb-3">
+							<label class="form-label" for="newPassword">Mật khẩu mới</label>
+							<div class="input-group">
+								<input id="newPassword" name="newPassword" type="password" class="form-control" minlength="6" required />
+								<button type="button" class="btn btn-outline-secondary btn-toggle-password" data-target="newPassword" aria-label="Hiện/ẩn mật khẩu">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+										<path d="M8 3C4.8 3 2.1 5 1 8c1.1 3 3.8 5 7 5s5.9-2 7-5c-1.1-3-3.8-5-7-5zm0 8.5A3.5 3.5 0 1 1 8 4.5a3.5 3.5 0 0 1 0 7zm0-1.8A1.7 1.7 0 1 0 8 6.3a1.7 1.7 0 0 0 0 3.4z"/>
+									</svg>
+								</button>
+							</div>
+						</div>
+
+						<div class="mb-3">
+							<label class="form-label" for="confirmNewPassword">Xác nhận mật khẩu mới</label>
+							<div class="input-group">
+								<input id="confirmNewPassword" name="confirmNewPassword" type="password" class="form-control" minlength="6" required />
+								<button type="button" class="btn btn-outline-secondary btn-toggle-password" data-target="confirmNewPassword" aria-label="Hiện/ẩn mật khẩu">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+										<path d="M8 3C4.8 3 2.1 5 1 8c1.1 3 3.8 5 7 5s5.9-2 7-5c-1.1-3-3.8-5-7-5zm0 8.5A3.5 3.5 0 1 1 8 4.5a3.5 3.5 0 0 1 0 7zm0-1.8A1.7 1.7 0 1 0 8 6.3a1.7 1.7 0 0 0 0 3.4z"/>
+									</svg>
+								</button>
+							</div>
+						</div>
+
+						<div class="d-flex justify-content-end gap-2">
+							<button type="button" class="btn btn-outline-secondary" id="profilePasswordResetBtn">Hủy</button>
+							<button type="submit" class="btn btn-primary">Đổi mật khẩu</button>
+						</div>
+					</form>
+				</div>
+			</div>
+		}
+	</div>
+</div>
+
+@section Scripts {
+	<script>
+		(() => {
+			const chooseAvatarBtn = document.getElementById('chooseAvatarBtn');
+			const avatarFileInput = document.getElementById('avatarFile');
+			const avatarPreview = document.getElementById('profileAvatarPreview');
+			const profileInfoForm = document.getElementById('profileInfoForm');
+			const profileInfoResetBtn = document.getElementById('profileInfoResetBtn');
+			const passwordForm = document.getElementById('changePasswordForm');
+			const passwordResetBtn = document.getElementById('profilePasswordResetBtn');
+			const originalAvatarSrc = avatarPreview instanceof HTMLImageElement ? avatarPreview.src : '';
+
+			if (chooseAvatarBtn instanceof HTMLButtonElement && avatarFileInput instanceof HTMLInputElement) {
+				chooseAvatarBtn.addEventListener('click', () => avatarFileInput.click());
+			}
+
+			if (avatarFileInput instanceof HTMLInputElement && avatarPreview instanceof HTMLImageElement) {
+				avatarFileInput.addEventListener('change', () => {
+					const file = avatarFileInput.files && avatarFileInput.files.length > 0 ? avatarFileInput.files[0] : null;
+					if (!file) {
+						avatarPreview.src = originalAvatarSrc;
+						return;
+					}
+
+					const reader = new FileReader();
+					reader.onload = () => {
+						if (typeof reader.result === 'string') {
+							avatarPreview.src = reader.result;
+						}
+					};
+					reader.readAsDataURL(file);
+				});
+			}
+
+			if (profileInfoResetBtn instanceof HTMLButtonElement && profileInfoForm instanceof HTMLFormElement) {
+				profileInfoResetBtn.addEventListener('click', () => {
+					profileInfoForm.reset();
+					if (avatarPreview instanceof HTMLImageElement) {
+						avatarPreview.src = originalAvatarSrc;
+					}
+				});
+			}
+
+			if (passwordResetBtn instanceof HTMLButtonElement && passwordForm instanceof HTMLFormElement) {
+				passwordResetBtn.addEventListener('click', () => {
+					passwordForm.reset();
+					passwordForm.querySelectorAll('input[type="text"]').forEach(input => {
+						if (input instanceof HTMLInputElement) {
+							input.type = 'password';
+						}
+					});
+				});
+			}
+
+			document.querySelectorAll('.btn-toggle-password').forEach(button => {
+				button.addEventListener('click', () => {
+					if (!(button instanceof HTMLElement)) {
+						return;
+					}
+
+					const targetId = button.getAttribute('data-target');
+					if (!targetId) {
+						return;
+					}
+
+					const input = document.getElementById(targetId);
+					if (!(input instanceof HTMLInputElement)) {
+						return;
+					}
+
+					input.type = input.type === 'password' ? 'text' : 'password';
+				});
+			});
+		})();
+	</script>
+}

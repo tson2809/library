@@ -1,0 +1,115 @@
+@model Client_web.Models.ViewModels.LoginVm
+@{
+    ViewData["Title"] = "Đăng nhập";
+    Layout = "_AuthLayout";
+    var googleEnabled = ViewBag.GoogleEnabled is bool canGoogle && canGoogle;
+    var googleClientId = ViewBag.GoogleClientId as string ?? string.Empty;
+    var returnUrl = ViewBag.ReturnUrl as string ?? string.Empty;
+}
+
+<section class="login-shell">
+    <div class="login-visual" aria-hidden="true"></div>
+
+    <div class="login-form-pane">
+        <div class="login-card">
+            <h3 class="mb-4 login-title"><span>Đăng nhập hệ thống</span><span class="login-title-brand">LibraryS</span></h3>
+
+            <form method="post" asp-action="Login">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@ViewBag.ReturnUrl" />
+
+                <div asp-validation-summary="All" class="text-danger mb-2"></div>
+
+                <div class="mb-3">
+                    <label asp-for="Username" class="form-label"></label>
+                    <input asp-for="Username" class="form-control" />
+                    <span asp-validation-for="Username" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Password" class="form-label"></label>
+                    <input asp-for="Password" class="form-control" type="password" />
+                    <span asp-validation-for="Password" class="text-danger"></span>
+                </div>
+
+                <button class="btn btn-primary w-100" type="submit">Đăng nhập</button>
+            </form>
+
+            <div class="text-center mt-3 d-grid gap-1">
+                <a asp-action="ForgotPassword">Quên mật khẩu?</a>
+            </div>
+
+            <div class="text-center my-3 text-muted">hoặc</div>
+            @if (googleEnabled)
+            {
+                <form id="googleLoginForm" method="post" asp-action="GoogleLogin" class="google-login-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="credential" id="googleCredential" />
+                    <input type="hidden" name="returnUrl" value="@returnUrl" />
+                    <div id="g_id_onload"
+                         data-client_id="@googleClientId"
+                         data-context="signin"
+                         data-ux_mode="popup"
+                         data-callback="handleGoogleCredential"
+                         data-auto_prompt="false">
+                    </div>
+                    <button class="google-login-button" type="button" aria-label="Đăng nhập với Google">
+                        <svg class="google-login-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z" />
+                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                            <path fill="none" d="M0 0h48v48H0z" />
+                        </svg>
+                        <span>Đăng nhập với Google</span>
+                    </button>
+                    <div class="g_id_signin google-login-native"
+                         data-type="standard"
+                         data-shape="rectangular"
+                         data-theme="outline"
+                         data-text="signin_with"
+                         data-size="large"
+                         data-logo_alignment="left"
+                         data-width="376">
+                    </div>
+                </form>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-secondary w-100" disabled>Đăng nhập với Google</button>
+            }
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    @if (googleEnabled)
+    {
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
+        <script>
+            window.handleGoogleCredential = function (response) {
+                const credentialInput = document.getElementById('googleCredential');
+                const form = document.getElementById('googleLoginForm');
+                if (!credentialInput || !form || !response || !response.credential) {
+                    return;
+                }
+
+                credentialInput.value = response.credential;
+                form.submit();
+            };
+
+            window.addEventListener('load', function () {
+                const customButton = document.querySelector('.google-login-button');
+                const nativeButton = document.querySelector('.google-login-native [role="button"]');
+                if (!customButton || !nativeButton) {
+                    return;
+                }
+
+                customButton.addEventListener('click', function () {
+                    nativeButton.click();
+                });
+            });
+        </script>
+    }
+}
