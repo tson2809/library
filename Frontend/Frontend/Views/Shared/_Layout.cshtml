@@ -1,0 +1,94 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - LibraryS</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Client_web.styles.css" asp-append-version="true" />
+</head>
+<body>
+    @{
+        var currentUser = Context.Session.GetString("Auth.FullName");
+        var currentRole = Context.Session.GetString("Auth.Role");
+        var isLoggedIn = !string.IsNullOrWhiteSpace(Context.Session.GetString("Auth.Username"));
+        var currentAvatar = Context.Session.GetString("Auth.AvatarUrl") ?? "/images/avatar/default.jpg";
+        var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+        var currentAction = ViewContext.RouteData.Values["action"]?.ToString() ?? string.Empty;
+
+        bool IsCurrentController(params string[] controllers)
+        {
+            return controllers.Any(c => string.Equals(currentController, c, StringComparison.OrdinalIgnoreCase));
+        }
+
+        bool IsCurrentAction(string actionName)
+        {
+            return string.Equals(currentAction, actionName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        string HeaderActive(bool condition)
+        {
+            return condition ? "active" : string.Empty;
+        }
+    }
+    <header class="app-header">
+        <nav class="navbar navbar-expand-lg navbar-light container app-nav">
+            <a class="navbar-brand fw-bold app-brand" asp-area="" asp-controller="Home" asp-action="Index">LibraryS</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav" aria-controls="appNav" aria-expanded="false" aria-label="Chuyển đổi điều hướng">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="appNav">
+                @if (isLoggedIn)
+                {
+                    var isManager = string.Equals(currentRole, "Quản lý", StringComparison.OrdinalIgnoreCase);
+                    <ul class="navbar-nav ms-auto align-items-lg-center">
+                        <li class="nav-item"><a class="nav-link @HeaderActive(IsCurrentController("Books"))" asp-controller="Books" asp-action="Index">Sách</a></li>
+                        <li class="nav-item"><a class="nav-link @HeaderActive(IsCurrentController("Members"))" asp-controller="Members" asp-action="Index">Thành viên</a></li>
+                        <li class="nav-item"><a class="nav-link @HeaderActive(IsCurrentController("Notifications"))" asp-controller="Notifications" asp-action="Index">Thông báo</a></li>
+                        @if (isManager)
+                        {
+                            <li class="nav-item"><a class="nav-link @HeaderActive(IsCurrentController("Home", "Manager", "Operations", "Categories") && !IsCurrentAction("CollectFine"))" asp-controller="Home" asp-action="Dashboard">Quản lý</a></li>
+                        }
+                        @if (!isManager)
+                        {
+                            <li class="nav-item"><a class="nav-link @HeaderActive(IsCurrentController("Loans"))" asp-controller="Loans" asp-action="Index">Phiếu mượn</a></li>
+                            <li class="nav-item"><a class="nav-link @HeaderActive(IsCurrentController("Manager") && IsCurrentAction("FinePaymentHistory"))" asp-controller="Manager" asp-action="FinePaymentHistory">Thu phạt</a></li>
+                        }
+                        <li class="nav-item ms-lg-3 app-user small">@currentUser (@currentRole)</li>
+                        <li class="nav-item ms-lg-2 dropdown">
+                            <button class="avatar-button" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Tùy chọn tài khoản">
+                                <img src="@currentAvatar" alt="ảnh đổi diện" class="avatar-image" />
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end account-menu">
+                                <li>
+                                    <a class="dropdown-item" asp-controller="Auth" asp-action="Profile">Hồ sơ cá nhân</a>
+                                </li>
+                                <li><hr class="dropdown-divider" /></li>
+                                <li>
+                                    <form asp-controller="Auth" asp-action="Logout" method="post" class="px-3 py-1">
+                                        @Html.AntiForgeryToken()
+                                        <button class="btn btn-link dropdown-logout p-0" type="submit">Đăng xuất</button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                }
+            </div>
+        </nav>
+    </header>
+
+    <main class="container py-4">
+        @RenderBody()
+    </main>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
+
+
+
