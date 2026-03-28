@@ -1,0 +1,664 @@
+﻿@model Client_web.Models.ViewModels.BookDetailVm
+@{
+    ViewData["Title"] = "Chi tiết sách";
+    var isManager = string.Equals(Context.Session.GetString("Auth.Role"), "Quản lý", StringComparison.OrdinalIgnoreCase);
+    var maxBarcode = ViewBag.MaxBarcode is int value ? value : 0;
+    var allCategories = ViewBag.AllCategories as List<string> ?? new List<string>();
+    var authorsText = string.Join(", ", Model.Authors ?? new List<string>());
+    var categoriesText = string.Join(",", Model.Categories ?? new List<string>());
+
+    string ToVietnameseStatus(string? status) => status switch
+    {
+        "Available" => "Có sẵn",
+        "Borrowed" => "Đang mượn",
+        "Reserved" => "Đã đặt trước",
+        "Maintenance" => "Bảo trì",
+        "Lost" => "Thất lạc",
+        "Damaged" => "Hư hỏng",
+        "Disposed" => "Thanh lý",
+        _ => status ?? string.Empty
+    };
+
+    string ToVietnameseCondition(string? condition) => condition switch
+    {
+        "New" => "Mới",
+        "Good" => "Tốt",
+        "Worn" => "Cũ",
+        "Damaged" => "Hư hỏng",
+        "Lost" => "Thất lạc",
+        _ => condition ?? string.Empty
+    };
+}
+
+<h3 class="mb-3">Chi tiết sách</h3>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<div class="mb-3">
+    <a class="btn btn-outline-secondary" asp-action="Index">Quay lại danh sách</a>
+</div>
+
+<section class="book-detail-hero">
+    <div class="book-detail-panel book-detail-left">
+        <div class="book-detail-cover-wrap">
+            @if (!string.IsNullOrWhiteSpace(Model.ImageUrl))
+            {
+                <img src="@Model.ImageUrl" alt="@Model.Title" class="book-detail-cover" />
+            }
+            else
+            {
+                <div class="book-detail-cover-empty">Không có ảnh bìa</div>
+            }
+        </div>
+    </div>
+
+    <div class="book-detail-panel book-detail-right">
+        <h4 class="book-detail-title">@Model.Title</h4>
+        <div class="book-detail-meta-grid">
+            <div class="meta-label">ISBN</div>
+            <div class="meta-value">@Model.Isbn</div>
+
+            <div class="meta-label">Nhà xuất bản</div>
+            <div class="meta-value">@(Model.Publisher ?? "-")</div>
+
+            <div class="meta-label">Năm xuất bản</div>
+            <div class="meta-value">@(Model.PublishedYear?.ToString() ?? "-")</div>
+
+            <div class="meta-label">Tác giả</div>
+            <div class="meta-value">@string.Join(", ", Model.Authors ?? new List<string>())</div>
+
+            <div class="meta-label">Thể loại</div>
+            <div class="meta-value">@string.Join(", ", Model.Categories ?? new List<string>())</div>
+
+            <div class="meta-label">Bản sao khả dụng</div>
+            <div class="meta-value">@Model.AvailableCopies / @Model.TotalCopies</div>
+        </div>
+        @if (isManager)
+        {
+            <div class="mt-3">
+                <button
+                    id="openEditBookModalBtn"
+                    type="button"
+                    class="btn btn-outline-primary"
+                    data-book-id="@Model.BookId"
+                    data-isbn="@Model.Isbn"
+                    data-title="@Model.Title"
+                    data-publisher="@Model.Publisher"
+                    data-published-year="@Model.PublishedYear"
+                    data-authors="@authorsText"
+                    data-categories="@categoriesText"
+                    data-total-copies="@Model.TotalCopies">
+                    Sửa sản phẩm
+                </button>
+            </div>
+        }
+    </div>
+</section>
+
+<h5 class="mt-4">Danh sách bản sao</h5>
+<div class="table-wrap mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col-lg-4">
+            <input id="copySearchInput" class="form-control" placeholder="Tìm theo mã vạch, trạng thái, tình trạng" />
+        </div>
+        <div class="col-lg-3">
+            <select id="copyStatusFilter" class="form-select">
+                <option value="all">Tất cả trạng thái</option>
+                <option value="available">Có sẵn</option>
+                <option value="borrowed">Đang mượn</option>
+                <option value="reserved">Đã đặt trước</option>
+                <option value="maintenance">Bảo trì</option>
+                <option value="lost">Thất lạc</option>
+            </select>
+        </div>
+        <div class="col-lg-5 d-flex justify-content-lg-end gap-2">
+            <button type="button" id="applyCopyFilter" class="btn btn-primary">Tìm kiếm</button>
+            <button type="button" id="resetCopyFilter" class="btn btn-filter-reset">Xóa bộ lọc</button>
+        </div>
+    </div>
+</div>
+
+<div class="table-wrap">
+    <table class="table table-sm table-striped align-middle" id="copiesTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Mã vạch</th>
+                <th>Trạng thái</th>
+                <th>Tình trạng</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Copies.Count == 0)
+            {
+                <tr>
+                    <td colspan="5" class="text-muted">Chưa có bản sao nào.</td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var copy in Model.Copies)
+                {
+                    var searchKey = string.Join(" ", new[]
+                    {
+                        copy.BookCopyId.ToString(),
+                        copy.Barcode,
+                        ToVietnameseStatus(copy.CopyStatus),
+                        copy.PhysicalCondition ?? string.Empty
+                    }).ToLowerInvariant();
+
+                    <tr data-search="@searchKey" data-status="@copy.CopyStatus.ToLowerInvariant()">
+                        <td>@copy.BookCopyId</td>
+                        <td>@copy.Barcode</td>
+                        <td>@ToVietnameseStatus(copy.CopyStatus)</td>
+                        <td>@ToVietnameseCondition(copy.PhysicalCondition)</td>
+                        <td class="text-end">
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-primary btn-edit-copy"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editCopyModal"
+                                data-book-id="@Model.BookId"
+                                data-copy-id="@copy.BookCopyId"
+                                data-barcode="@copy.Barcode"
+                                data-status="@copy.CopyStatus"
+                                data-status-text="@ToVietnameseStatus(copy.CopyStatus)"
+                                data-condition="@copy.PhysicalCondition"
+                                data-location="@copy.LocationCode">
+                                Sửa
+                            </button>
+                        </td>
+                    </tr>
+                }
+                <tr id="noResultRow" style="display:none;">
+                    <td colspan="5" class="text-muted">Không có bản sao phù hợp bộ lọc.</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="catalog-footer mt-3 details-copy-footer">
+        <div class="catalog-pager" id="copyPager"></div>
+        <div class="catalog-page-size">
+            <label for="copyPageSize" class="form-label mb-0">Hiển thị</label>
+            <select id="copyPageSize" class="form-select form-select-sm">
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+@if (isManager)
+{
+    <input type="hidden" id="maxBarcodeValue" value="@maxBarcode" />
+    @await Html.PartialAsync("_EditBookModal", null, new ViewDataDictionary(ViewData)
+    {
+        ["AllCategories"] = allCategories
+    })
+}
+
+<div class="modal fade" id="editCopyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="UpdateCopyFromDetails" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Cập nhật bản sao</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalBookId" name="bookId" />
+                    <input type="hidden" id="modalStatusValue" name="copyStatus" />
+                    <div class="mb-3">
+                        <label for="modalBarcode" class="form-label">Mã vạch</label>
+                        <input id="modalBarcode" name="barcode" class="form-control" readonly />
+                    </div>
+                    <div class="mb-3">
+                        <label for="modalStatusText" class="form-label">Trạng thái</label>
+                        <input id="modalStatusText" class="form-control" readonly />
+                    </div>
+                    <div class="mb-3">
+                        <label for="modalCondition" class="form-label">Tình trạng vật lý</label>
+                        <select id="modalCondition" name="physicalCondition" class="form-select">
+                            <option value="New">Mới</option>
+                            <option value="Good">Tốt</option>
+                            <option value="Worn">Cu</option>
+                            <option value="Damaged">Hư hỏng</option>
+                            <option value="Lost">Thất lạc</option>
+                        </select>
+                        <small id="modalConditionReadonlyHint" class="text-muted" style="display:none;">Bản sao đang mượn nên không thể chỉnh tình trạng vật lý.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const searchInput = document.getElementById('copySearchInput');
+            const statusFilter = document.getElementById('copyStatusFilter');
+            const pageSizeSelect = document.getElementById('copyPageSize');
+            const applyButton = document.getElementById('applyCopyFilter');
+            const resetButton = document.getElementById('resetCopyFilter');
+            const table = document.getElementById('copiesTable');
+            const pager = document.getElementById('copyPager');
+            const noResultRow = document.getElementById('noResultRow');
+            const modalElement = document.getElementById('editCopyModal');
+            const editBookForm = document.getElementById('editBookForm');
+            const editModalElement = document.getElementById('editBookModal');
+            const openEditBookModalBtn = document.getElementById('openEditBookModalBtn');
+            const editSelectedCategoriesBox = document.getElementById('editSelectedCategoriesBox');
+            const editSelectedCategoryNamesInput = document.getElementById('editSelectedCategoryNames');
+            const editCategorySelectForBook = document.getElementById('editCategorySelectForBook');
+            const editAddCategoryToSelection = document.getElementById('editAddCategoryToSelection');
+            const maxBarcodeInput = document.getElementById('maxBarcodeValue');
+
+            const setFieldError = (input, errorElement, message) => {
+                if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLSelectElement)) {
+                    return;
+                }
+
+                if (!(errorElement instanceof HTMLElement)) {
+                    return;
+                }
+
+                if (message) {
+                    input.classList.add('is-invalid');
+                    errorElement.textContent = message;
+                    return;
+                }
+
+                input.classList.remove('is-invalid');
+                errorElement.textContent = '';
+            };
+
+            const renderCategoryChips = (categorySet, categoryBox, categoryInput) => {
+                if (!(categoryBox instanceof HTMLElement) || !(categoryInput instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                categoryBox.innerHTML = '';
+                const categories = Array.from(categorySet);
+                categoryInput.value = categories.join(',');
+
+                if (categories.length === 0) {
+                    const empty = document.createElement('span');
+                    empty.className = 'text-muted small';
+                    empty.textContent = 'Chưa chọn thể loại';
+                    categoryBox.appendChild(empty);
+                    return;
+                }
+
+                categories.forEach(category => {
+                    const chip = document.createElement('span');
+                    chip.className = 'category-chip';
+                    chip.textContent = category;
+
+                    const removeButton = document.createElement('button');
+                    removeButton.type = 'button';
+                    removeButton.className = 'category-chip-remove';
+                    removeButton.textContent = 'x';
+                    removeButton.addEventListener('click', () => {
+                        categorySet.delete(category);
+                        renderCategoryChips(categorySet, categoryBox, categoryInput);
+                    });
+
+                    chip.appendChild(removeButton);
+                    categoryBox.appendChild(chip);
+                });
+            };
+
+            const validateBookForm = ({
+                isbnInput,
+                isbnError,
+                titleInput,
+                titleError,
+                publishedDateInput,
+                publishedDateError,
+                copiesInput,
+                copiesError,
+                imageInput,
+                imageError,
+                maxAdditionalCopies
+            }) => {
+                const isbn = isbnInput instanceof HTMLInputElement ? isbnInput.value.trim() : '';
+                const title = titleInput instanceof HTMLInputElement ? titleInput.value.trim() : '';
+                const publishedDate = publishedDateInput instanceof HTMLInputElement ? publishedDateInput.value : '';
+                const copies = copiesInput instanceof HTMLInputElement ? Number.parseInt(copiesInput.value || '0', 10) : 0;
+                let valid = true;
+
+                if (!/^\d{13}$/.test(isbn)) {
+                    setFieldError(isbnInput, isbnError, 'ISBN phải gồm đúng 13 chữ số.');
+                    valid = false;
+                } else {
+                    setFieldError(isbnInput, isbnError, '');
+                }
+
+                if (!title) {
+                    setFieldError(titleInput, titleError, 'Vui lòng nhập tên sách.');
+                    valid = false;
+                } else {
+                    setFieldError(titleInput, titleError, '');
+                }
+
+                if (publishedDateInput instanceof HTMLInputElement && publishedDate) {
+                    const selectedDate = new Date(`${publishedDate}T00:00:00`);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    if (Number.isNaN(selectedDate.getTime())) {
+                        setFieldError(publishedDateInput, publishedDateError, 'Ngày xuất bản không hợp lệ.');
+                        valid = false;
+                    } else if (selectedDate > today) {
+                        setFieldError(publishedDateInput, publishedDateError, 'Ngày xuất bản không được lớn hơn ngày hiện tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(publishedDateInput, publishedDateError, '');
+                    }
+                } else {
+                    setFieldError(publishedDateInput, publishedDateError, '');
+                }
+
+                if (!Number.isInteger(copies) || copies <= 0) {
+                    setFieldError(copiesInput, copiesError, 'Số lượng bản sao phải lớn hơn 0.');
+                    valid = false;
+                } else if (copies > maxAdditionalCopies) {
+                    setFieldError(copiesInput, copiesError, 'Số lượng bản sao vượt giới hạn mã vạch 5 chữ số.');
+                    valid = false;
+                } else {
+                    setFieldError(copiesInput, copiesError, '');
+                }
+
+                if (imageInput instanceof HTMLInputElement && imageInput.files && imageInput.files.length > 0) {
+                    const file = imageInput.files[0];
+                    const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
+                    const lowerName = file.name.toLowerCase();
+                    const isAllowed = allowedExtensions.some(ext => lowerName.endsWith(ext));
+                    if (!isAllowed) {
+                        setFieldError(imageInput, imageError, 'Chỉ hỗ trợ ảnh PNG, JPG, JPEG hoặc WEBP.');
+                        valid = false;
+                    } else if (file.size > 5 * 1024 * 1024) {
+                        setFieldError(imageInput, imageError, 'Kích thước ảnh tối đa là 5MB.');
+                        valid = false;
+                    } else {
+                        setFieldError(imageInput, imageError, '');
+                    }
+                } else {
+                    setFieldError(imageInput, imageError, '');
+                }
+
+                return valid;
+            };
+
+            const editSelectedCategorySet = new Set();
+            if (editAddCategoryToSelection instanceof HTMLButtonElement && editCategorySelectForBook instanceof HTMLSelectElement) {
+                editAddCategoryToSelection.addEventListener('click', () => {
+                    const selectedValue = editCategorySelectForBook.value.trim();
+                    if (!selectedValue) {
+                        return;
+                    }
+
+                    editSelectedCategorySet.add(selectedValue);
+                    renderCategoryChips(editSelectedCategorySet, editSelectedCategoriesBox, editSelectedCategoryNamesInput);
+                });
+            }
+
+            renderCategoryChips(editSelectedCategorySet, editSelectedCategoriesBox, editSelectedCategoryNamesInput);
+
+            if (openEditBookModalBtn instanceof HTMLButtonElement && editModalElement instanceof HTMLElement && window.bootstrap?.Modal) {
+                openEditBookModalBtn.addEventListener('click', () => {
+                    const trigger = openEditBookModalBtn;
+
+                    const bookIdInput = document.getElementById('editBookId');
+                    const isbnInput = document.getElementById('editBookIsbn');
+                    const titleInput = document.getElementById('editBookTitle');
+                    const publisherInput = document.getElementById('editBookPublisherName');
+                    const publishedDateInput = document.getElementById('editBookPublishedDate');
+                    const authorInput = document.getElementById('editBookAuthorNames');
+                    const desiredTotalInput = document.getElementById('editBookDesiredTotalCopies');
+                    const currentTotalInput = document.getElementById('editBookCurrentTotalCopies');
+                    const currentTotalHint = document.getElementById('editBookCurrentTotalHint');
+                    const imageInput = document.getElementById('editBookImageFile');
+
+                    const currentTotal = Number.parseInt(trigger.getAttribute('data-total-copies') || '0', 10) || 0;
+                    const publishedYear = Number.parseInt(trigger.getAttribute('data-published-year') || '0', 10);
+
+                    if (bookIdInput instanceof HTMLInputElement) {
+                        bookIdInput.value = trigger.getAttribute('data-book-id') || '';
+                    }
+                    if (isbnInput instanceof HTMLInputElement) {
+                        isbnInput.value = trigger.getAttribute('data-isbn') || '';
+                    }
+                    if (titleInput instanceof HTMLInputElement) {
+                        titleInput.value = trigger.getAttribute('data-title') || '';
+                    }
+                    if (publisherInput instanceof HTMLInputElement) {
+                        publisherInput.value = trigger.getAttribute('data-publisher') || '';
+                    }
+                    if (publishedDateInput instanceof HTMLInputElement) {
+                        publishedDateInput.value = publishedYear >= 1000 ? `${publishedYear}-01-01` : '';
+                    }
+                    if (authorInput instanceof HTMLInputElement) {
+                        authorInput.value = trigger.getAttribute('data-authors') || '';
+                    }
+                    if (desiredTotalInput instanceof HTMLInputElement) {
+                        desiredTotalInput.value = currentTotal > 0 ? currentTotal.toString() : '1';
+                    }
+                    if (currentTotalInput instanceof HTMLInputElement) {
+                        currentTotalInput.value = currentTotal.toString();
+                    }
+                    if (currentTotalHint instanceof HTMLElement) {
+                        currentTotalHint.textContent = `Số lượng hiện có: ${currentTotal}. Nếu tăng, hệ thống sẽ chỉ thêm bản sao mới.`;
+                    }
+                    if (imageInput instanceof HTMLInputElement) {
+                        imageInput.value = '';
+                    }
+
+                    editSelectedCategorySet.clear();
+                    const categoriesRaw = trigger.getAttribute('data-categories') || '';
+                    categoriesRaw
+                        .split(',')
+                        .map(category => category.trim())
+                        .filter(category => category.length > 0)
+                        .forEach(category => editSelectedCategorySet.add(category));
+                    renderCategoryChips(editSelectedCategorySet, editSelectedCategoriesBox, editSelectedCategoryNamesInput);
+
+                    ['editBookIsbn', 'editBookTitle', 'editBookPublishedDate', 'editBookDesiredTotalCopies', 'editBookImageFile']
+                        .forEach(id => {
+                            const field = document.getElementById(id);
+                            if (field instanceof HTMLInputElement) {
+                                field.classList.remove('is-invalid');
+                            }
+                        });
+                    ['editBookIsbnError', 'editBookTitleError', 'editBookPublishedDateError', 'editBookDesiredTotalCopiesError', 'editBookImageFileError']
+                        .forEach(id => {
+                            const error = document.getElementById(id);
+                            if (error instanceof HTMLElement) {
+                                error.textContent = '';
+                            }
+                        });
+
+                    const modal = window.bootstrap.Modal.getOrCreateInstance(editModalElement);
+                    modal.show();
+                });
+            }
+
+            if (editBookForm instanceof HTMLFormElement) {
+                editBookForm.addEventListener('submit', event => {
+                    const isbnInput = document.getElementById('editBookIsbn');
+                    const titleInput = document.getElementById('editBookTitle');
+                    const publishedDateInput = document.getElementById('editBookPublishedDate');
+                    const imageInput = document.getElementById('editBookImageFile');
+                    const desiredTotalInput = document.getElementById('editBookDesiredTotalCopies');
+                    const currentTotalInput = document.getElementById('editBookCurrentTotalCopies');
+
+                    const isbnError = document.getElementById('editBookIsbnError');
+                    const titleError = document.getElementById('editBookTitleError');
+                    const publishedDateError = document.getElementById('editBookPublishedDateError');
+                    const imageError = document.getElementById('editBookImageFileError');
+                    const desiredTotalError = document.getElementById('editBookDesiredTotalCopiesError');
+
+                    const desiredTotal = desiredTotalInput instanceof HTMLInputElement
+                        ? Number.parseInt(desiredTotalInput.value || '0', 10)
+                        : 0;
+                    const currentTotal = currentTotalInput instanceof HTMLInputElement
+                        ? Number.parseInt(currentTotalInput.value || '0', 10)
+                        : 0;
+                    const maxBarcode = maxBarcodeInput instanceof HTMLInputElement ? Number.parseInt(maxBarcodeInput.value || '0', 10) : 0;
+
+                    const additionalCopies = desiredTotal - currentTotal;
+                    if (additionalCopies < 0) {
+                        setFieldError(desiredTotalInput, desiredTotalError, 'Không thể giảm số lượng hiện có. Bạn chỉ có thể giữ nguyên hoặc tăng thêm.');
+                        event.preventDefault();
+                        return;
+                    }
+
+                    const valid = validateBookForm({
+                        isbnInput,
+                        isbnError,
+                        titleInput,
+                        titleError,
+                        publishedDateInput,
+                        publishedDateError,
+                        copiesInput: desiredTotalInput,
+                        copiesError: desiredTotalError,
+                        imageInput,
+                        imageError,
+                        maxAdditionalCopies: currentTotal + Math.max(0, 99999 - maxBarcode)
+                    });
+
+                    if (!valid) {
+                        event.preventDefault();
+                    }
+                });
+            }
+
+            if (modalElement) {
+                modalElement.addEventListener('show.bs.modal', event => {
+                    const trigger = event.relatedTarget;
+                    if (!(trigger instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const bookIdInput = document.getElementById('modalBookId');
+                    const barcodeInput = document.getElementById('modalBarcode');
+                    const statusInput = document.getElementById('modalStatusValue');
+                    const statusTextInput = document.getElementById('modalStatusText');
+                    const conditionInput = document.getElementById('modalCondition');
+                    const conditionHint = document.getElementById('modalConditionReadonlyHint');
+
+                    if (!(bookIdInput instanceof HTMLInputElement) || !(barcodeInput instanceof HTMLInputElement) || !(statusInput instanceof HTMLInputElement) || !(statusTextInput instanceof HTMLInputElement) || !(conditionInput instanceof HTMLSelectElement)) {
+                        return;
+                    }
+
+                    bookIdInput.value = trigger.dataset.bookId || '';
+                    barcodeInput.value = trigger.dataset.barcode || '';
+                    statusInput.value = trigger.dataset.status || 'Available';
+                    statusTextInput.value = trigger.dataset.statusText || '';
+                    conditionInput.value = trigger.dataset.condition || 'Good';
+
+                    const isBorrowed = (statusInput.value || '').toLowerCase() === 'borrowed';
+                    conditionInput.disabled = isBorrowed;
+                    if (conditionHint instanceof HTMLElement) {
+                        conditionHint.style.display = isBorrowed ? '' : 'none';
+                    }
+                });
+            }
+
+            if (table && pager && searchInput instanceof HTMLInputElement && statusFilter instanceof HTMLSelectElement && pageSizeSelect instanceof HTMLSelectElement && applyButton instanceof HTMLButtonElement && resetButton instanceof HTMLButtonElement) {
+                const rows = Array.from(table.querySelectorAll('tbody tr[data-search]'));
+                let keyword = '';
+                let status = 'all';
+                let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 10;
+                let currentPage = 1;
+
+                const normalizeSearch = window.normalizeSearchText;
+
+                const getFilteredRows = () => rows.filter(row => {
+                    const rowSearch = normalizeSearch(row.getAttribute('data-search') || '');
+                    const rowStatus = (row.getAttribute('data-status') || '').toLowerCase();
+                    const matchKeyword = !keyword || rowSearch.includes(keyword);
+                    const matchStatus = status === 'all' || rowStatus === status;
+                    return matchKeyword && matchStatus;
+                });
+
+                const render = () => {
+                    const filtered = getFilteredRows();
+                    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+                    if (currentPage > totalPages) {
+                        currentPage = totalPages;
+                    }
+
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+
+                    const start = (currentPage - 1) * pageSize;
+                    const end = start + pageSize;
+                    filtered.slice(start, end).forEach(row => {
+                        row.style.display = '';
+                    });
+
+                    if (noResultRow) {
+                        noResultRow.style.display = filtered.length === 0 ? '' : 'none';
+                    }
+
+                    window.renderPagination({
+                        pager,
+                        totalPages,
+                        currentPage,
+                        onPageChange: page => {
+                            currentPage = page;
+                            render();
+                        }
+                    });
+                };
+
+                const applyFilter = () => {
+                    keyword = normalizeSearch(searchInput.value);
+                    status = statusFilter.value.toLowerCase();
+                    pageSize = Number.parseInt(pageSizeSelect.value, 10) || 10;
+                    currentPage = 1;
+                    render();
+                };
+
+                applyButton.addEventListener('click', applyFilter);
+                searchInput.addEventListener('input', applyFilter);
+                statusFilter.addEventListener('change', applyFilter);
+                resetButton.addEventListener('click', () => {
+                    searchInput.value = '';
+                    statusFilter.value = 'all';
+                    pageSizeSelect.value = '5';
+                    applyFilter();
+                });
+
+                pageSizeSelect.addEventListener('change', () => {
+                    pageSize = Number.parseInt(pageSizeSelect.value, 10) || 10;
+                    currentPage = 1;
+                    render();
+                });
+
+                render();
+            }
+        })();
+    </script>
+}
+
+
+
+
+

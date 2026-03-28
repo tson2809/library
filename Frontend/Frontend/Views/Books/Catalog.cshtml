@@ -1,0 +1,692 @@
+﻿@model List<Client_web.Models.ViewModels.BookVm>
+@{
+    ViewData["Title"] = "Danh sách";
+    var isManager = string.Equals(Context.Session.GetString("Auth.Role"), "Quản lý", StringComparison.OrdinalIgnoreCase);
+    var maxBarcode = ViewBag.MaxBarcode is int value ? value : 0;
+    var createBookError = ViewBag.CreateBookError as string ?? string.Empty;
+    var createBookOpenModal = ViewBag.CreateBookOpenModal is bool openModal && openModal;
+    var createBookIsbn = ViewBag.CreateBookIsbn as string ?? string.Empty;
+    var createBookTitle = ViewBag.CreateBookTitle as string ?? string.Empty;
+    var createBookPublisherName = ViewBag.CreateBookPublisherName as string ?? string.Empty;
+    var createBookPublishedDate = ViewBag.CreateBookPublishedDate as string ?? string.Empty;
+    var todayDateValue = DateTime.Today.ToString("yyyy-MM-dd");
+    var createBookAuthorNames = ViewBag.CreateBookAuthorNames as string ?? string.Empty;
+    var createBookCategoryNames = ViewBag.CreateBookCategoryNames as string ?? string.Empty;
+    var createBookInitialCopies = ViewBag.CreateBookInitialCopies is int copies && copies > 0 ? copies : 1;
+    var allCategories = Model
+        .SelectMany(x => x.Categories ?? new List<string>())
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(x => x)
+        .ToList();
+}
+
+<section class="book-catalog-shell">
+    <div class="catalog-head d-flex justify-content-between align-items-center">
+        <h3 class="mb-1">Danh sách</h3>
+        @if (isManager)
+        {
+            <button id="openCreateBookModalBtn" type="button" class="btn btn-primary">Tạo sách</button>
+        }
+    </div>
+
+    <div class="table-wrap mb-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-lg-4">
+                <input id="searchInput" class="form-control" placeholder="Tìm kiếm sản phẩm theo tên, ISBN, NXB" />
+            </div>
+            <div class="col-lg-3">
+                <select id="categoryFilter" class="form-select">
+                    <option value="all">Tất cả thể loại</option>
+                    @foreach (var category in allCategories)
+                    {
+                        <option value="@category.ToLowerInvariant()">@category</option>
+                    }
+                </select>
+            </div>
+            <div class="col-lg-2">
+                <select id="borrowSort" class="form-select">
+                    <option value="default">Sắp xếp mặc định</option>
+                    <option value="most" selected>Mượn nhiều</option>
+                    <option value="least">Mượn ít</option>
+                </select>
+            </div>
+            <div class="col-lg-3 d-flex justify-content-lg-end gap-2">
+                <button type="button" id="applyCatalogFilter" class="btn btn-primary">Tìm kiếm</button>
+                <button type="button" id="resetCatalogFilter" class="btn btn-filter-reset">Xóa bộ lọc</button>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ViewBag.Error as string))
+    {
+        <div class="mt-3">
+            <div class="alert alert-danger py-2 mb-0">@ViewBag.Error</div>
+        </div>
+    }
+    @if (TempData["Success"] is string successMessage && !string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="mt-3">
+            <div class="alert alert-success py-2 mb-0">@successMessage</div>
+        </div>
+    }
+    @if (TempData["Error"] is string generalError && !string.IsNullOrWhiteSpace(generalError))
+    {
+        <div class="mt-3">
+            <div class="alert alert-danger py-2 mb-0">@generalError</div>
+        </div>
+    }
+
+    <div class="catalog-grid mt-3" id="catalogGrid">
+        @foreach (var item in Model)
+        {
+            var categoryText = string.Join(", ", item.Categories ?? new List<string>());
+            var categoryKey = string.Join("|", (item.Categories ?? new List<string>()).Select(c => c.ToLowerInvariant()));
+            var searchKey = string.Join(" ", new[] { item.Title, item.Isbn, item.Publisher ?? string.Empty }).ToLowerInvariant();
+            <article class="book-card" data-categories="@categoryKey" data-search="@searchKey" data-borrow="@item.BorrowCount">
+                <a asp-action="Details" asp-route-id="@item.BookId" class="book-cover-link">
+                    @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+                    {
+                        <img src="@item.ImageUrl" alt="@item.Title" class="book-cover" />
+                    }
+                    else
+                    {
+                        <div class="book-cover empty">Không có ảnh</div>
+                    }
+                </a>
+                <div class="book-card-body">
+                    <h5 class="book-title">
+                        <a asp-action="Details" asp-route-id="@item.BookId">@item.Title</a>
+                    </h5>
+                    <div class="book-meta">@item.Publisher</div>
+                    <div class="book-category">@categoryText</div>
+                    <div class="book-meta">Lượt mượn: @item.BorrowCount</div>
+                    @if (isManager && item.CanDeactivate)
+                    {
+                        <div class="book-card-actions d-flex gap-2">
+                            @if (item.CanDeactivate)
+                            {
+                                <form asp-action="Deactivate" method="post" onsubmit="return confirm('Bạn có chắc muốn ngừng bán sản phẩm này?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="bookId" value="@item.BookId" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Xóa sản phẩm</button>
+                                </form>
+                            }
+                        </div>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+
+    <div class="catalog-footer">
+        <div class="catalog-pager" id="catalogPager"></div>
+        <div class="catalog-page-size">
+            <label for="pageSizeSelect" class="form-label mb-0">Hiển thị</label>
+            <select id="pageSizeSelect" class="form-select form-select-sm">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="15">15</option>
+            </select>
+        </div>
+    </div>
+</section>
+
+@if (isManager)
+{
+<div class="modal fade" id="createBookModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form asp-action="Create" method="post" id="createBookForm" novalidate enctype="multipart/form-data" data-open-modal="@(createBookOpenModal ? "1" : "0")">
+                @Html.AntiForgeryToken()
+                <input type="hidden" id="maxBarcodeValue" value="@maxBarcode" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo sách</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body row g-2">
+                    @if (!string.IsNullOrWhiteSpace(createBookError))
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-danger py-2 mb-1">@createBookError</div>
+                        </div>
+                    }
+                    <div class="col-md-6">
+                        <label class="form-label">ISBN</label>
+                        <div class="input-group">
+                            <input class="form-control" id="createBookIsbn" name="isbn" maxlength="13" value="@createBookIsbn" />
+                            <button type="button" class="btn btn-outline-primary" id="createBookIsbnLookupBtn" title="Tra cứu thông tin sách qua ISBN từ ISBNdb / Google Books / OpenLibrary">
+                                <span id="createBookIsbnLookupBtnText">Tra cứu</span>
+                                <span class="spinner-border spinner-border-sm d-none" id="createBookIsbnLookupSpinner" role="status" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                        <div class="invalid-feedback" id="createBookIsbnError"></div>
+                        <div class="form-text d-none" id="createBookIsbnLookupStatus"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Tên sách</label>
+                        <input class="form-control" id="createBookTitle" name="title" value="@createBookTitle" />
+                        <div class="invalid-feedback" id="createBookTitleError"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nhà xuất bản</label>
+                        <input class="form-control" name="publisherName" value="@createBookPublisherName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Ngày xuất bản</label>
+                        <input class="form-control" id="createBookPublishedDate" name="publishedDate" type="date" max="@todayDateValue" value="@createBookPublishedDate" />
+                        <div class="invalid-feedback" id="createBookPublishedDateError"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Số lượng bản sao</label>
+                        <input class="form-control" id="createBookInitialCopies" name="initialCopies" type="number" min="1" value="@createBookInitialCopies" />
+                        <div class="invalid-feedback" id="createBookInitialCopiesError"></div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Tác giả</label>
+                        <input class="form-control" name="authorNames" value="@createBookAuthorNames" />
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label">Thể loại đã chọn</label>
+                        <div class="selected-categories-box" id="selectedCategoriesBox"></div>
+                        <input type="hidden" id="selectedCategoryNames" name="categoryNames" value="@createBookCategoryNames" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Chọn thể loại</label>
+                        <div class="d-flex gap-2">
+                            <select class="form-select" id="categorySelectForCreate">
+                                <option value="">Chọn thể loại</option>
+                                @foreach (var category in allCategories)
+                                {
+                                    <option value="@category">@category</option>
+                                }
+                            </select>
+                            <button type="button" id="addCategoryToSelection" class="btn btn-outline-primary">Thêm</button>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Ảnh bìa</label>
+                        <input class="form-control" id="createBookImageFile" name="imageFile" type="file" accept=".png,.jpg,.jpeg,.webp" />
+                        <div class="invalid-feedback" id="createBookImageFileError"></div>
+                        <div id="createBookIsbnCoverPreview" class="d-none mt-2 d-flex align-items-start gap-2">
+                            <img id="createBookIsbnCoverPreviewImg" alt="Ảnh bìa đề xuất từ ISBN" style="max-height:120px; max-width:90px; border:1px solid #dee2e6; border-radius:4px;" />
+                            <div class="form-text mb-0">
+                                Ảnh bìa đề xuất từ ISBN. <a href="#" id="createBookIsbnCoverPreviewLink" target="_blank" rel="noopener">Mở ảnh</a> rồi tải về và upload lại nếu muốn dùng.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Tạo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const grid = document.getElementById('catalogGrid');
+            const pager = document.getElementById('catalogPager');
+            const pageSizeSelect = document.getElementById('pageSizeSelect');
+            const searchInput = document.getElementById('searchInput');
+            const categoryFilter = document.getElementById('categoryFilter');
+            const borrowSort = document.getElementById('borrowSort');
+            const applyButton = document.getElementById('applyCatalogFilter');
+            const resetButton = document.getElementById('resetCatalogFilter');
+            const createBookForm = document.getElementById('createBookForm');
+            const openCreateBookModalBtn = document.getElementById('openCreateBookModalBtn');
+            const selectedCategoriesBox = document.getElementById('selectedCategoriesBox');
+            const selectedCategoryNamesInput = document.getElementById('selectedCategoryNames');
+            const categorySelectForCreate = document.getElementById('categorySelectForCreate');
+            const addCategoryToSelection = document.getElementById('addCategoryToSelection');
+            const maxBarcodeInput = document.getElementById('maxBarcodeValue');
+
+            const normalizeSearch = window.normalizeSearchText;
+
+            const setFieldError = (input, errorElement, message) => {
+                if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLSelectElement)) {
+                    return;
+                }
+
+                if (!(errorElement instanceof HTMLElement)) {
+                    return;
+                }
+
+                if (message) {
+                    input.classList.add('is-invalid');
+                    errorElement.textContent = message;
+                    return;
+                }
+
+                input.classList.remove('is-invalid');
+                errorElement.textContent = '';
+            };
+
+            const selectedCategorySet = new Set();
+
+            const renderCategoryChips = (categorySet, categoryBox, categoryInput) => {
+                if (!(categoryBox instanceof HTMLElement) || !(categoryInput instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                categoryBox.innerHTML = '';
+                const categories = Array.from(categorySet);
+                categoryInput.value = categories.join(',');
+
+                if (categories.length === 0) {
+                    const empty = document.createElement('span');
+                    empty.className = 'text-muted small';
+                    empty.textContent = 'Chưa chọn thể loại';
+                    categoryBox.appendChild(empty);
+                    return;
+                }
+
+                categories.forEach(category => {
+                    const chip = document.createElement('span');
+                    chip.className = 'category-chip';
+                    chip.textContent = category;
+
+                    const removeButton = document.createElement('button');
+                    removeButton.type = 'button';
+                    removeButton.className = 'category-chip-remove';
+                    removeButton.textContent = 'x';
+                    removeButton.addEventListener('click', () => {
+                        categorySet.delete(category);
+                        renderCategoryChips(categorySet, categoryBox, categoryInput);
+                    });
+
+                    chip.appendChild(removeButton);
+                    categoryBox.appendChild(chip);
+                });
+            };
+
+            const validateBookForm = ({
+                isbnInput,
+                isbnError,
+                titleInput,
+                titleError,
+                publishedDateInput,
+                publishedDateError,
+                copiesInput,
+                copiesError,
+                imageInput,
+                imageError,
+                maxAdditionalCopies
+            }) => {
+                const isbn = isbnInput instanceof HTMLInputElement ? isbnInput.value.trim() : '';
+                const title = titleInput instanceof HTMLInputElement ? titleInput.value.trim() : '';
+                const publishedDate = publishedDateInput instanceof HTMLInputElement ? publishedDateInput.value : '';
+                const copies = copiesInput instanceof HTMLInputElement ? Number.parseInt(copiesInput.value || '0', 10) : 0;
+                let valid = true;
+
+                if (!/^\d{13}$/.test(isbn)) {
+                    setFieldError(isbnInput, isbnError, 'ISBN phải gồm đúng 13 chữ số.');
+                    valid = false;
+                } else {
+                    setFieldError(isbnInput, isbnError, '');
+                }
+
+                if (!title) {
+                    setFieldError(titleInput, titleError, 'Vui lòng nhập tên sách.');
+                    valid = false;
+                } else {
+                    setFieldError(titleInput, titleError, '');
+                }
+
+                if (publishedDateInput instanceof HTMLInputElement && publishedDate) {
+                    const selectedDate = new Date(`${publishedDate}T00:00:00`);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    if (Number.isNaN(selectedDate.getTime())) {
+                        setFieldError(publishedDateInput, publishedDateError, 'Ngày xuất bản không hợp lệ.');
+                        valid = false;
+                    } else if (selectedDate > today) {
+                        setFieldError(publishedDateInput, publishedDateError, 'Ngày xuất bản không được lớn hơn ngày hiện tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(publishedDateInput, publishedDateError, '');
+                    }
+                } else {
+                    setFieldError(publishedDateInput, publishedDateError, '');
+                }
+
+                if (!Number.isInteger(copies) || copies <= 0) {
+                    setFieldError(copiesInput, copiesError, 'Số lượng bản sao phải lớn hơn 0.');
+                    valid = false;
+                } else if (copies > maxAdditionalCopies) {
+                    setFieldError(copiesInput, copiesError, 'Số lượng bản sao vượt giới hạn mã vạch 5 chữ số.');
+                    valid = false;
+                } else {
+                    setFieldError(copiesInput, copiesError, '');
+                }
+
+                if (imageInput instanceof HTMLInputElement && imageInput.files && imageInput.files.length > 0) {
+                    const file = imageInput.files[0];
+                    const allowedExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
+                    const lowerName = file.name.toLowerCase();
+                    const isAllowed = allowedExtensions.some(ext => lowerName.endsWith(ext));
+                    if (!isAllowed) {
+                        setFieldError(imageInput, imageError, 'Chỉ hỗ trợ ảnh PNG, JPG, JPEG hoặc WEBP.');
+                        valid = false;
+                    } else if (file.size > 5 * 1024 * 1024) {
+                        setFieldError(imageInput, imageError, 'Kích thước ảnh tối đa là 5MB.');
+                        valid = false;
+                    } else {
+                        setFieldError(imageInput, imageError, '');
+                    }
+                } else {
+                    setFieldError(imageInput, imageError, '');
+                }
+
+                return valid;
+            };
+
+            if (addCategoryToSelection instanceof HTMLButtonElement && categorySelectForCreate instanceof HTMLSelectElement) {
+                addCategoryToSelection.addEventListener('click', () => {
+                    const selectedValue = categorySelectForCreate.value.trim();
+                    if (!selectedValue) {
+                        return;
+                    }
+
+                    selectedCategorySet.add(selectedValue);
+                    renderCategoryChips(selectedCategorySet, selectedCategoriesBox, selectedCategoryNamesInput);
+                });
+            }
+
+            if (selectedCategoryNamesInput instanceof HTMLInputElement && selectedCategoryNamesInput.value.trim()) {
+                selectedCategoryNamesInput.value
+                    .split(',')
+                    .map(category => category.trim())
+                    .filter(category => category.length > 0)
+                    .forEach(category => selectedCategorySet.add(category));
+            }
+
+            renderCategoryChips(selectedCategorySet, selectedCategoriesBox, selectedCategoryNamesInput);
+
+            const modalElement = document.getElementById('createBookModal');
+            if (openCreateBookModalBtn instanceof HTMLButtonElement
+                && modalElement instanceof HTMLElement
+                && window.bootstrap?.Modal) {
+                openCreateBookModalBtn.addEventListener('click', () => {
+                    const modal = window.bootstrap.Modal.getOrCreateInstance(modalElement);
+                    modal.show();
+                });
+            }
+
+            if (createBookForm instanceof HTMLFormElement
+                && createBookForm.dataset.openModal === '1'
+                && modalElement instanceof HTMLElement
+                && window.bootstrap
+                && window.bootstrap.Modal) {
+                const modal = window.bootstrap.Modal.getOrCreateInstance(modalElement);
+                modal.show();
+            }
+
+            const isbnLookupBtn = document.getElementById('createBookIsbnLookupBtn');
+            const isbnLookupBtnText = document.getElementById('createBookIsbnLookupBtnText');
+            const isbnLookupSpinner = document.getElementById('createBookIsbnLookupSpinner');
+            const isbnLookupStatus = document.getElementById('createBookIsbnLookupStatus');
+            const isbnCoverPreview = document.getElementById('createBookIsbnCoverPreview');
+            const isbnCoverPreviewImg = document.getElementById('createBookIsbnCoverPreviewImg');
+            const isbnCoverPreviewLink = document.getElementById('createBookIsbnCoverPreviewLink');
+
+            const setIsbnLookupStatus = (message, isError) => {
+                if (!(isbnLookupStatus instanceof HTMLElement)) {
+                    return;
+                }
+                if (!message) {
+                    isbnLookupStatus.classList.add('d-none');
+                    isbnLookupStatus.textContent = '';
+                    return;
+                }
+                isbnLookupStatus.classList.remove('d-none');
+                isbnLookupStatus.classList.toggle('text-danger', !!isError);
+                isbnLookupStatus.classList.toggle('text-success', !isError);
+                isbnLookupStatus.textContent = message;
+            };
+
+            const toggleIsbnLookupLoading = isLoading => {
+                if (isbnLookupBtn instanceof HTMLButtonElement) {
+                    isbnLookupBtn.disabled = isLoading;
+                }
+                if (isbnLookupBtnText instanceof HTMLElement) {
+                    isbnLookupBtnText.classList.toggle('d-none', isLoading);
+                }
+                if (isbnLookupSpinner instanceof HTMLElement) {
+                    isbnLookupSpinner.classList.toggle('d-none', !isLoading);
+                }
+            };
+
+            const performIsbnLookup = async () => {
+                const isbnInput = document.getElementById('createBookIsbn');
+                if (!(isbnInput instanceof HTMLInputElement)) {
+                    return;
+                }
+
+                const rawIsbn = isbnInput.value.trim();
+                const digits = rawIsbn.replace(/\D/g, '');
+                if (digits.length !== 10 && digits.length !== 13) {
+                    setIsbnLookupStatus('Vui lòng nhập ISBN gồm 10 hoặc 13 chữ số.', true);
+                    return;
+                }
+
+                toggleIsbnLookupLoading(true);
+                setIsbnLookupStatus('Đang tra cứu...', false);
+
+                try {
+                    const response = await fetch(`@Url.Action("LookupIsbn", "Books")?isbn=${encodeURIComponent(digits)}`, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        credentials: 'same-origin'
+                    });
+                    const payload = await response.json();
+                    if (!payload || payload.success !== true || !payload.data) {
+                        setIsbnLookupStatus(payload?.message || 'Không tìm thấy thông tin sách.', true);
+                        return;
+                    }
+
+                    const data = payload.data;
+                    const titleInput = document.getElementById('createBookTitle');
+                    const titleError = document.getElementById('createBookTitleError');
+                    const publisherInput = document.querySelector('#createBookForm input[name="publisherName"]');
+                    const publishedDateInput = document.getElementById('createBookPublishedDate');
+                    const publishedDateError = document.getElementById('createBookPublishedDateError');
+                    const authorsInput = document.querySelector('#createBookForm input[name="authorNames"]');
+
+                    let filledFields = [];
+
+                    if (titleInput instanceof HTMLInputElement && data.title) {
+                        titleInput.value = data.title;
+                        setFieldError(titleInput, titleError, '');
+                        filledFields.push('tên sách');
+                    }
+                    if (publisherInput instanceof HTMLInputElement && data.publisherName && !publisherInput.value) {
+                        publisherInput.value = data.publisherName;
+                        filledFields.push('NXB');
+                    }
+                    if (publishedDateInput instanceof HTMLInputElement && data.publishedDate) {
+                        const today = publishedDateInput.max || new Date().toISOString().slice(0, 10);
+                        const candidate = data.publishedDate <= today ? data.publishedDate : today;
+                        publishedDateInput.value = candidate;
+                        setFieldError(publishedDateInput, publishedDateError, '');
+                        filledFields.push('ngày XB');
+                    }
+                    if (authorsInput instanceof HTMLInputElement && Array.isArray(data.authors) && data.authors.length > 0 && !authorsInput.value) {
+                        authorsInput.value = data.authors.join(', ');
+                        filledFields.push('tác giả');
+                    }
+                    if (Array.isArray(data.categories) && data.categories.length > 0) {
+                        data.categories.forEach(name => {
+                            if (typeof name === 'string' && name.trim() && !selectedCategorySet.has(name.trim())) {
+                                selectedCategorySet.add(name.trim());
+                            }
+                        });
+                        renderCategoryChips(selectedCategorySet, selectedCategoriesBox, selectedCategoryNamesInput);
+                    }
+
+                    if (data.imageUrl
+                        && isbnCoverPreview instanceof HTMLElement
+                        && isbnCoverPreviewImg instanceof HTMLImageElement
+                        && isbnCoverPreviewLink instanceof HTMLAnchorElement) {
+                        isbnCoverPreviewImg.src = data.imageUrl;
+                        isbnCoverPreviewLink.href = data.imageUrl;
+                        isbnCoverPreview.classList.remove('d-none');
+                    } else if (isbnCoverPreview instanceof HTMLElement) {
+                        isbnCoverPreview.classList.add('d-none');
+                    }
+
+                    const sourceLabel = data.source === 'googleBooks'
+                        ? 'Google Books'
+                        : (data.source === 'openLibrary'
+                            ? 'OpenLibrary'
+                            : (data.source === 'isbnDb' ? 'ISBNdb' : 'nguồn ngoài'));
+                    const summary = filledFields.length > 0
+                        ? `Đã điền tự động: ${filledFields.join(', ')}. (Nguồn: ${sourceLabel})`
+                        : `Đã tìm thấy thông tin nhưng không có trường nào để điền. (Nguồn: ${sourceLabel})`;
+                    setIsbnLookupStatus(summary, false);
+                } catch (error) {
+                    setIsbnLookupStatus('Lỗi kết nối khi tra cứu ISBN. Vui lòng thử lại.', true);
+                } finally {
+                    toggleIsbnLookupLoading(false);
+                }
+            };
+
+            if (isbnLookupBtn instanceof HTMLButtonElement) {
+                isbnLookupBtn.addEventListener('click', () => {
+                    performIsbnLookup();
+                });
+            }
+
+            if (createBookForm instanceof HTMLFormElement) {
+                createBookForm.addEventListener('submit', event => {
+                    const isbnInput = document.getElementById('createBookIsbn');
+                    const titleInput = document.getElementById('createBookTitle');
+                    const publishedDateInput = document.getElementById('createBookPublishedDate');
+                    const imageInput = document.getElementById('createBookImageFile');
+                    const copiesInput = document.getElementById('createBookInitialCopies');
+
+                    const isbnError = document.getElementById('createBookIsbnError');
+                    const titleError = document.getElementById('createBookTitleError');
+                    const publishedDateError = document.getElementById('createBookPublishedDateError');
+                    const imageError = document.getElementById('createBookImageFileError');
+                    const copiesError = document.getElementById('createBookInitialCopiesError');
+
+                    const maxBarcode = maxBarcodeInput instanceof HTMLInputElement ? Number.parseInt(maxBarcodeInput.value || '0', 10) : 0;
+                    const valid = validateBookForm({
+                        isbnInput,
+                        isbnError,
+                        titleInput,
+                        titleError,
+                        publishedDateInput,
+                        publishedDateError,
+                        copiesInput,
+                        copiesError,
+                        imageInput,
+                        imageError,
+                        maxAdditionalCopies: Math.max(0, 99999 - maxBarcode)
+                    });
+
+                    if (!valid) {
+                        event.preventDefault();
+                    }
+                });
+            }
+
+            if (!grid || !pager || !(pageSizeSelect instanceof HTMLSelectElement) || !(searchInput instanceof HTMLInputElement) || !(categoryFilter instanceof HTMLSelectElement) || !(borrowSort instanceof HTMLSelectElement) || !(applyButton instanceof HTMLButtonElement) || !(resetButton instanceof HTMLButtonElement)) {
+                return;
+            }
+
+            const cards = Array.from(grid.querySelectorAll('.book-card'));
+            let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 10;
+            let activeFilter = 'all';
+            let keyword = '';
+            let sortMode = 'most';
+            let currentPage = 1;
+
+            const getFilteredCards = () => {
+                const filtered = cards.filter(card => {
+                    const categories = normalizeSearch(card.dataset.categories || '');
+                    const searchable = normalizeSearch(card.dataset.search || '');
+                    const matchCategory = activeFilter === 'all' || categories.includes(normalizeSearch(activeFilter));
+                    const matchKeyword = !keyword || searchable.includes(keyword);
+                    return matchCategory && matchKeyword;
+                });
+
+                if (sortMode === 'most') {
+                    filtered.sort((a, b) => Number.parseInt(b.dataset.borrow || '0', 10) - Number.parseInt(a.dataset.borrow || '0', 10));
+                } else if (sortMode === 'least') {
+                    filtered.sort((a, b) => Number.parseInt(a.dataset.borrow || '0', 10) - Number.parseInt(b.dataset.borrow || '0', 10));
+                }
+
+                return filtered;
+            };
+
+            const render = () => {
+                const filtered = getFilteredCards();
+                const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+
+                const start = (currentPage - 1) * pageSize;
+                const end = start + pageSize;
+
+                cards.forEach(card => {
+                    card.style.display = 'none';
+                });
+
+                filtered.slice(start, end).forEach(card => {
+                    card.style.display = '';
+                });
+
+                window.renderPagination({
+                    pager,
+                    totalPages,
+                    currentPage,
+                    onPageChange: page => {
+                        currentPage = page;
+                        render();
+                    }
+                });
+            };
+
+            const applyFilter = () => {
+                keyword = normalizeSearch(searchInput.value);
+                activeFilter = normalizeSearch(categoryFilter.value);
+                sortMode = borrowSort.value;
+                currentPage = 1;
+                render();
+            };
+
+            applyButton.addEventListener('click', applyFilter);
+            searchInput.addEventListener('input', applyFilter);
+            categoryFilter.addEventListener('change', applyFilter);
+            borrowSort.addEventListener('change', applyFilter);
+
+            resetButton.addEventListener('click', () => {
+                searchInput.value = '';
+                categoryFilter.value = 'all';
+                borrowSort.value = 'most';
+                applyFilter();
+            });
+
+            pageSizeSelect.addEventListener('change', () => {
+                pageSize = Number.parseInt(pageSizeSelect.value, 10) || 10;
+                currentPage = 1;
+                render();
+            });
+
+            render();
+        })();
+    </script>
+}
+
+
+
+
+
