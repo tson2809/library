@@ -1,0 +1,274 @@
+﻿@model List<Client_web.Models.ViewModels.CategoryVm>
+@{
+    ViewData["Title"] = "Thể loại";
+    var createCategoryError = TempData["CreateCategoryError"] as string ?? string.Empty;
+    var createCategoryName = TempData["CreateCategoryName"] as string ?? string.Empty;
+    var createCategoryDescription = TempData["CreateCategoryDescription"] as string ?? string.Empty;
+}
+
+<div class="manager-shell">
+    <partial name="~/Views/Shared/_ManagerSidebar.cshtml" />
+
+    <section class="manager-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="mb-0">Danh sách thể loại</h3>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCategoryModal">Tạo thể loại</button>
+        </div>
+
+        @if (TempData["Success"] != null)
+        {
+            <div class="alert alert-success">@TempData["Success"]</div>
+        }
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger">@ViewBag.Error</div>
+        }
+
+        <div class="table-wrap mb-3">
+            <div class="row g-2 align-items-center">
+                <div class="col-lg-6">
+                    <input id="categorySearchInput" class="form-control" placeholder="Tìm theo tên thể loại, mô tả" />
+                </div>
+                <div class="col-lg-6 d-flex justify-content-lg-end gap-2">
+                    <button type="button" id="resetCategoryFilter" class="btn btn-filter-reset">Xóa bộ lọc</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table table-striped align-middle" id="categoriesTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tên thể loại</th>
+                        <th>Mô tả</th>
+                        <th>Số sách</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="text-muted">Chưa có thể loại.</td>
+                        </tr>
+                    }
+                    @foreach (var item in Model)
+                    {
+                        var search = string.Join(" ", new[] { item.CategoryName, item.Description ?? string.Empty }).ToLowerInvariant();
+                        <tr data-search="@search">
+                            <td>@item.CategoryId</td>
+                            <td>@item.CategoryName</td>
+                            <td>@(string.IsNullOrWhiteSpace(item.Description) ? "-" : item.Description)</td>
+                            <td>@item.BookCount</td>
+                        </tr>
+                    }
+                    <tr id="categoryNoResultRow" style="display:none;">
+                        <td colspan="4" class="text-muted">Không có thể loại phù hợp bộ lọc.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="catalog-footer mt-3">
+                <div class="catalog-pager" id="categoryPager"></div>
+                <div class="catalog-page-size">
+                    <label for="categoryPageSize" class="form-label mb-0">Hiển thị</label>
+                    <select id="categoryPageSize" class="form-select form-select-sm">
+                        <option value="5" selected>5</option>
+                        <option value="10">10</option>
+                        <option value="15">15</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<div class="modal fade" id="createCategoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="Create" method="post" id="createCategoryForm" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo thể loại</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="createCategoryServerError" value="@createCategoryError" />
+                    <div class="mb-3">
+                        <label class="form-label" for="createCategoryName">Tên thể loại</label>
+                        <input id="createCategoryName" class="form-control" name="categoryName" value="@createCategoryName" required />
+                        <div class="invalid-feedback" id="createCategoryNameError"></div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label" for="createCategoryDescription">Mô tả</label>
+                        <textarea id="createCategoryDescription" class="form-control" name="description" rows="3">@createCategoryDescription</textarea>
+                        <div class="invalid-feedback" id="createCategoryDescriptionError"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Tạo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const table = document.getElementById('categoriesTable');
+            const searchInput = document.getElementById('categorySearchInput');
+            const resetButton = document.getElementById('resetCategoryFilter');
+            const noResultRow = document.getElementById('categoryNoResultRow');
+            const pager = document.getElementById('categoryPager');
+            const pageSizeSelect = document.getElementById('categoryPageSize');
+            const createModalElement = document.getElementById('createCategoryModal');
+            const createForm = document.getElementById('createCategoryForm');
+
+            if (!table
+                || !(searchInput instanceof HTMLInputElement)
+                || !(resetButton instanceof HTMLButtonElement)
+                || !(pager instanceof HTMLElement)
+                || !(pageSizeSelect instanceof HTMLSelectElement)) {
+                return;
+            }
+
+            const rows = Array.from(table.querySelectorAll('tbody tr[data-search]'));
+            let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+            let currentPage = 1;
+
+            const normalizeSearch = window.normalizeSearchText;
+
+            const setFieldError = (input, errorElement, message) => {
+                if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLTextAreaElement)) {
+                    return;
+                }
+
+                if (!(errorElement instanceof HTMLElement)) {
+                    return;
+                }
+
+                if (message) {
+                    input.classList.add('is-invalid');
+                    errorElement.textContent = message;
+                    return;
+                }
+
+                input.classList.remove('is-invalid');
+                errorElement.textContent = '';
+            };
+
+            const render = () => {
+                const keyword = normalizeSearch(searchInput.value);
+                const filtered = rows.filter(row => {
+                    const rowSearch = normalizeSearch(row.getAttribute('data-search') || '');
+                    return !keyword || rowSearch.includes(keyword);
+                });
+
+                rows.forEach(row => row.style.display = 'none');
+                const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+
+                const start = (currentPage - 1) * pageSize;
+                const end = start + pageSize;
+                filtered.slice(start, end).forEach(row => row.style.display = '');
+
+                if (noResultRow) {
+                    noResultRow.style.display = filtered.length === 0 ? '' : 'none';
+                }
+
+                window.renderPagination({
+                    pager,
+                    totalPages,
+                    currentPage,
+                    onPageChange: page => {
+                        currentPage = page;
+                        render();
+                    }
+                });
+            };
+
+            searchInput.addEventListener('input', () => {
+                currentPage = 1;
+                render();
+            });
+            resetButton.addEventListener('click', () => {
+                searchInput.value = '';
+                currentPage = 1;
+                render();
+            });
+
+            pageSizeSelect.addEventListener('change', () => {
+                pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                currentPage = 1;
+                render();
+            });
+
+            if (createForm instanceof HTMLFormElement) {
+                createForm.addEventListener('submit', event => {
+                    const nameInput = document.getElementById('createCategoryName');
+                    const descriptionInput = document.getElementById('createCategoryDescription');
+                    const nameError = document.getElementById('createCategoryNameError');
+                    const descriptionError = document.getElementById('createCategoryDescriptionError');
+
+                    const nameValue = nameInput instanceof HTMLInputElement ? nameInput.value.trim() : '';
+                    const descriptionValue = descriptionInput instanceof HTMLTextAreaElement ? descriptionInput.value.trim() : '';
+                    let valid = true;
+
+                    if (!nameValue) {
+                        setFieldError(nameInput, nameError, 'Vui lòng nhập tên thể loại.');
+                        valid = false;
+                    } else if (rows.some(row => {
+                        const cells = row.querySelectorAll('td');
+                        const existingName = normalizeSearch((cells[1]?.textContent || '').trim());
+                        return existingName === normalizeSearch(nameValue);
+                    })) {
+                        setFieldError(nameInput, nameError, 'Tên thể loại đã tồn tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(nameInput, nameError, '');
+                    }
+
+                    if (descriptionValue.length > 250) {
+                        setFieldError(descriptionInput, descriptionError, 'Mô tả tối đa 250 ký tự.');
+                        valid = false;
+                    } else {
+                        setFieldError(descriptionInput, descriptionError, '');
+                    }
+
+                    if (!valid) {
+                        event.preventDefault();
+                    }
+                });
+            }
+
+            const createServerError = document.getElementById('createCategoryServerError');
+            if (createModalElement && createServerError instanceof HTMLInputElement && createServerError.value) {
+                const nameInput = document.getElementById('createCategoryName');
+                const descriptionInput = document.getElementById('createCategoryDescription');
+                const nameError = document.getElementById('createCategoryNameError');
+                const descriptionError = document.getElementById('createCategoryDescriptionError');
+                const lowerMessage = createServerError.value.toLowerCase();
+
+                if (lowerMessage.includes('mô tả') || lowerMessage.includes('250')) {
+                    setFieldError(descriptionInput, descriptionError, createServerError.value);
+                } else {
+                    setFieldError(nameInput, nameError, createServerError.value);
+                }
+
+                const modal = bootstrap.Modal.getOrCreateInstance(createModalElement);
+                modal.show();
+            }
+
+            render();
+        })();
+    </script>
+}
+
+
+
+
+
