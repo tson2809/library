@@ -1,0 +1,81 @@
+@{
+    var allCategories = ViewData["AllCategories"] as List<string> ?? new List<string>();
+    var todayDateValue = DateTime.Today.ToString("yyyy-MM-dd");
+}
+
+<div class="modal fade" id="editBookModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form asp-action="Update" method="post" id="editBookForm" novalidate enctype="multipart/form-data">
+                @Html.AntiForgeryToken()
+                <input type="hidden" id="editBookId" name="bookId" />
+                <input type="hidden" id="editBookCurrentTotalCopies" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Sửa sách</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">ISBN</label>
+                        <input class="form-control" id="editBookIsbn" name="isbn" maxlength="13" />
+                        <div class="invalid-feedback" id="editBookIsbnError"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Tên sách</label>
+                        <input class="form-control" id="editBookTitle" name="title" />
+                        <div class="invalid-feedback" id="editBookTitleError"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nhà xuất bản</label>
+                        <input class="form-control" id="editBookPublisherName" name="publisherName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Ngày xuất bản</label>
+                        <input class="form-control" id="editBookPublishedDate" name="publishedDate" type="date" max="@todayDateValue" />
+                        <div class="invalid-feedback" id="editBookPublishedDateError"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Tổng số lượng bản sao</label>
+                        <input class="form-control" id="editBookDesiredTotalCopies" name="desiredTotalCopies" type="number" min="1" />
+                        <div class="small text-muted mt-1" id="editBookCurrentTotalHint"></div>
+                        <div class="invalid-feedback" id="editBookDesiredTotalCopiesError"></div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Tác giả</label>
+                        <input class="form-control" id="editBookAuthorNames" name="authorNames" />
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label">Thể loại đã chọn</label>
+                        <div class="selected-categories-box" id="editSelectedCategoriesBox"></div>
+                        <input type="hidden" id="editSelectedCategoryNames" name="categoryNames" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Chọn thể loại</label>
+                        <div class="d-flex gap-2">
+                            <select class="form-select" id="editCategorySelectForBook">
+                                <option value="">Chọn thể loại</option>
+                                @foreach (var category in allCategories)
+                                {
+                                    <option value="@category">@category</option>
+                                }
+                            </select>
+                            <button type="button" id="editAddCategoryToSelection" class="btn btn-outline-primary">Thêm</button>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Ảnh bìa (tùy chọn)</label>
+                        <input class="form-control" id="editBookImageFile" name="imageFile" type="file" accept=".png,.jpg,.jpeg,.webp" />
+                        <div class="invalid-feedback" id="editBookImageFileError"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+
