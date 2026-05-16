@@ -1,0 +1,487 @@
+﻿@model List<Client_web.Models.ViewModels.MemberVm>
+@{
+    ViewData["Title"] = "Thành viên";
+    var createMemberError = TempData["CreateMemberError"] as string;
+    var createMemberFullName = TempData["CreateMemberFullName"] as string ?? string.Empty;
+    var createMemberEmail = TempData["CreateMemberEmail"] as string ?? string.Empty;
+    var createMemberPhone = TempData["CreateMemberPhone"] as string ?? string.Empty;
+    var isManager = string.Equals(Context.Session.GetString("Auth.Role"), "Quản lý", StringComparison.OrdinalIgnoreCase);
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Danh sách thành viên</h3>
+    @if (!isManager)
+    {
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createMemberModal">Tạo mới</button>
+    }
+</div>
+
+<partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+<div class="table-wrap mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col-lg-5">
+            <input id="memberSearchInput" class="form-control" placeholder="Tìm theo mã thành viên, họ tên, email, điện thoại" />
+        </div>
+        <div class="col-lg-3">
+            <select id="memberStatusFilter" class="form-select">
+                <option value="all">Tất cả trạng thái</option>
+                <option value="true">Đang hoạt động</option>
+                <option value="false">Ngừng hoạt động</option>
+            </select>
+        </div>
+        <div class="col-lg-4 d-flex justify-content-lg-end gap-2">
+            <button type="button" id="applyMemberFilter" class="btn btn-primary">Tìm kiếm</button>
+            <button type="button" id="resetMemberFilter" class="btn btn-filter-reset">Xóa bộ lọc</button>
+        </div>
+    </div>
+</div>
+
+<div class="table-wrap">
+    <table class="table table-striped align-middle" id="membersTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Mã thành viên</th>
+                <th>Họ tên</th>
+                <th>Email</th>
+                <th>Điện thoại</th>
+                <th>Trạng thái</th>
+                <th>Đang mượn</th>
+                <th>Quá hạn</th>
+                @if (!isManager)
+                {
+                    <th class="text-end">Thao tác</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Count == 0)
+            {
+                <tr>
+                    <td colspan="@(isManager ? 8 : 9)" class="text-muted">Chưa có thành viên.</td>
+                </tr>
+            }
+            @foreach (var item in Model)
+            {
+                var memberSearch = string.Join(" ", new[]
+                {
+                    item.MemberCode,
+                    item.FullName,
+                    item.Email ?? string.Empty,
+                    item.Phone ?? string.Empty
+                }).ToLowerInvariant();
+                <tr data-search="@memberSearch" data-status="@item.IsActive.ToString().ToLowerInvariant()">
+                    <td>@item.MemberId</td>
+                    <td>@item.MemberCode</td>
+                    <td>@item.FullName</td>
+                    <td>@item.Email</td>
+                    <td>@item.Phone</td>
+                    <td>@(item.IsActive ? "Đang hoạt động" : "Ngừng hoạt động")</td>
+                    <td>@item.BorrowingLoans</td>
+                    <td>@item.OverdueLoans</td>
+                    @if (!isManager)
+                    {
+                        <td class="text-end">
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-primary btn-edit-member"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editMemberModal"
+                                data-member-id="@item.MemberId"
+                                data-email="@item.Email"
+                                data-phone="@item.Phone"
+                                data-active="@item.IsActive.ToString().ToLowerInvariant()">
+                                Sửa
+                            </button>
+                        </td>
+                    }
+                </tr>
+            }
+            <tr id="memberNoResultRow" style="display:none;">
+                <td colspan="@(isManager ? 8 : 9)" class="text-muted">Không có thành viên phù hợp bộ lọc.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="catalog-footer mt-3">
+        <div class="catalog-pager" id="memberPager"></div>
+        <div class="catalog-page-size">
+            <label for="memberPageSize" class="form-label mb-0">Hiển thị</label>
+            <select id="memberPageSize" class="form-select form-select-sm">
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+@if (!isManager)
+{
+<div class="modal fade" id="createMemberModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="Create" method="post" novalidate>
+                @Html.AntiForgeryToken()
+                <input type="hidden" id="createMemberServerError" value="@createMemberError" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo thành viên</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="createFullName">Họ tên</label>
+                        <input id="createFullName" class="form-control" name="fullName" value="@createMemberFullName" required />
+                        <div class="invalid-feedback" id="createFullNameError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="createEmail">Email</label>
+                        <input id="createEmail" class="form-control" name="email" value="@createMemberEmail" />
+                        <div class="invalid-feedback" id="createEmailError"></div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label" for="createPhone">Điện thoại</label>
+                        <input id="createPhone" class="form-control" name="phone" value="@createMemberPhone" required />
+                        <div class="invalid-feedback" id="createPhoneError"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Tạo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editMemberModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="Update" method="post" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Cập nhật thành viên</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editMemberId" name="memberId" />
+                    <div class="mb-3">
+                        <label class="form-label" for="editEmail">Email</label>
+                        <input id="editEmail" class="form-control" name="email" />
+                        <div class="invalid-feedback" id="editEmailError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="editPhone">Điện thoại</label>
+                        <input id="editPhone" class="form-control" name="phone" required />
+                        <div class="invalid-feedback" id="editPhoneError"></div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label" for="editActive">Trạng thái</label>
+                        <select id="editActive" class="form-select" name="isActive">
+                            <option value="true">Đang hoạt động</option>
+                            <option value="false">Ngừng hoạt động</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const table = document.getElementById('membersTable');
+            const searchInput = document.getElementById('memberSearchInput');
+            const statusFilter = document.getElementById('memberStatusFilter');
+            const applyButton = document.getElementById('applyMemberFilter');
+            const resetButton = document.getElementById('resetMemberFilter');
+            const pager = document.getElementById('memberPager');
+            const pageSizeSelect = document.getElementById('memberPageSize');
+            const noResultRow = document.getElementById('memberNoResultRow');
+            const editModal = document.getElementById('editMemberModal');
+            const createForm = document.querySelector('#createMemberModal form');
+            const editForm = document.querySelector('#editMemberModal form');
+            const createMemberModalElement = document.getElementById('createMemberModal');
+
+            const phoneRegex = /^0\d{9}$/;
+            const emailRegex = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/;
+
+            const normalizeSearch = window.normalizeSearchText;
+
+            const collectMemberContacts = () => {
+                return rows.map(row => {
+                    const cells = row.querySelectorAll('td');
+                    const memberId = Number.parseInt(cells[0]?.textContent?.trim() || '0', 10);
+                    const email = (cells[3]?.textContent || '').trim().toLowerCase();
+                    const phone = (cells[4]?.textContent || '').trim();
+                    return { memberId, email, phone };
+                });
+            };
+
+            const setFieldError = (input, errorElement, message) => {
+                if (!(input instanceof HTMLInputElement) || !(errorElement instanceof HTMLElement)) {
+                    return;
+                }
+
+                if (!message) {
+                    input.classList.remove('is-invalid');
+                    errorElement.textContent = '';
+                    return;
+                }
+
+                input.classList.add('is-invalid');
+                errorElement.textContent = message;
+            };
+
+            const validateEmailPhone = (emailInput, phoneInput, emailError, phoneError, currentMemberId = 0) => {
+                let valid = true;
+
+                const phone = (phoneInput instanceof HTMLInputElement ? phoneInput.value : '').trim();
+                const email = (emailInput instanceof HTMLInputElement ? emailInput.value : '').trim().toLowerCase();
+                const contacts = collectMemberContacts().filter(x => x.memberId !== currentMemberId);
+
+                if (!phone) {
+                    setFieldError(phoneInput, phoneError, 'Vui lòng nhập số điện thoại.');
+                    valid = false;
+                } else if (!phoneRegex.test(phone)) {
+                    setFieldError(phoneInput, phoneError, 'Số điện thoại phải bắt đầu bằng 0 và gồm đúng 10 chữ số.');
+                    valid = false;
+                } else if (contacts.some(x => x.phone && x.phone === phone)) {
+                    setFieldError(phoneInput, phoneError, 'Số điện thoại đã tồn tại.');
+                    valid = false;
+                } else {
+                    setFieldError(phoneInput, phoneError, '');
+                }
+
+                if (email) {
+                    if (!emailRegex.test(email)) {
+                        setFieldError(emailInput, emailError, 'Email không đúng định dạng.');
+                        valid = false;
+                    } else if (contacts.some(x => x.email && x.email === email)) {
+                        setFieldError(emailInput, emailError, 'Email đã tồn tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(emailInput, emailError, '');
+                    }
+                } else {
+                    setFieldError(emailInput, emailError, '');
+                }
+
+                return valid;
+            };
+
+            const mapServerErrorToCreateField = (message, fullNameInput, emailInput, phoneInput, fullNameError, emailError, phoneError) => {
+                if (!message) {
+                    return;
+                }
+
+                const lower = message.toLowerCase();
+                if (lower.includes('họ tên')) {
+                    setFieldError(fullNameInput, fullNameError, message);
+                    return;
+                }
+
+                if (lower.includes('email')) {
+                    setFieldError(emailInput, emailError, message);
+                    return;
+                }
+
+                if (lower.includes('điện thoại') || lower.includes('số điện thoại') || lower.includes('10 chữ số')) {
+                    setFieldError(phoneInput, phoneError, message);
+                    return;
+                }
+
+                setFieldError(phoneInput, phoneError, message);
+            };
+
+            if (createForm instanceof HTMLFormElement) {
+                const createFullName = document.getElementById('createFullName');
+                const createEmail = document.getElementById('createEmail');
+                const createPhone = document.getElementById('createPhone');
+                const createFullNameError = document.getElementById('createFullNameError');
+                const createEmailError = document.getElementById('createEmailError');
+                const createPhoneError = document.getElementById('createPhoneError');
+                const createMemberServerError = document.getElementById('createMemberServerError');
+
+                if (createMemberServerError instanceof HTMLInputElement && createMemberServerError.value.trim() && createMemberModalElement && window.bootstrap) {
+                    const modal = bootstrap.Modal.getOrCreateInstance(createMemberModalElement);
+                    modal.show();
+                    mapServerErrorToCreateField(
+                        createMemberServerError.value.trim(),
+                        createFullName,
+                        createEmail,
+                        createPhone,
+                        createFullNameError,
+                        createEmailError,
+                        createPhoneError
+                    );
+                }
+
+                createForm.addEventListener('submit', event => {
+                    const fullNameValue = createFullName instanceof HTMLInputElement ? createFullName.value.trim() : '';
+                    if (!fullNameValue) {
+                        setFieldError(createFullName, createFullNameError, 'Vui lòng nhập họ tên.');
+                        event.preventDefault();
+                        return;
+                    }
+
+                    setFieldError(createFullName, createFullNameError, '');
+                    const valid = validateEmailPhone(createEmail, createPhone, createEmailError, createPhoneError, 0);
+                    if (!valid) {
+                        event.preventDefault();
+                    }
+                });
+
+                [createFullName, createEmail, createPhone].forEach(el => {
+                    if (el instanceof HTMLInputElement) {
+                        el.addEventListener('input', () => {
+                            if (createFullName instanceof HTMLInputElement) {
+                                setFieldError(createFullName, createFullNameError, createFullName.value.trim() ? '' : 'Vui lòng nhập họ tên.');
+                            }
+                            validateEmailPhone(createEmail, createPhone, createEmailError, createPhoneError, 0);
+                        });
+                    }
+                });
+            }
+
+            if (table && pager && searchInput instanceof HTMLInputElement && statusFilter instanceof HTMLSelectElement && applyButton instanceof HTMLButtonElement && resetButton instanceof HTMLButtonElement && pageSizeSelect instanceof HTMLSelectElement) {
+                const rows = Array.from(table.querySelectorAll('tbody tr[data-search]'));
+                let keyword = '';
+                let status = 'all';
+                let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                let currentPage = 1;
+
+                const getFilteredRows = () => rows.filter(row => {
+                    const rowSearch = normalizeSearch(row.getAttribute('data-search') || '');
+                    const rowStatus = (row.getAttribute('data-status') || '').toLowerCase();
+                    const matchKeyword = !keyword || rowSearch.includes(keyword);
+                    const matchStatus = status === 'all' || rowStatus === status;
+                    return matchKeyword && matchStatus;
+                });
+
+                const render = () => {
+                    const filtered = getFilteredRows();
+                    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+                    if (currentPage > totalPages) {
+                        currentPage = totalPages;
+                    }
+
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+
+                    const start = (currentPage - 1) * pageSize;
+                    const end = start + pageSize;
+                    filtered.slice(start, end).forEach(row => {
+                        row.style.display = '';
+                    });
+
+                    if (noResultRow) {
+                        noResultRow.style.display = filtered.length === 0 ? '' : 'none';
+                    }
+
+                    window.renderPagination({
+                        pager,
+                        totalPages,
+                        currentPage,
+                        onPageChange: page => {
+                            currentPage = page;
+                            render();
+                        }
+                    });
+                };
+
+                const applyFilter = () => {
+                    keyword = normalizeSearch(searchInput.value);
+                    status = statusFilter.value.toLowerCase();
+                    currentPage = 1;
+                    render();
+                };
+
+                applyButton.addEventListener('click', applyFilter);
+                searchInput.addEventListener('input', applyFilter);
+                statusFilter.addEventListener('change', applyFilter);
+                resetButton.addEventListener('click', () => {
+                    searchInput.value = '';
+                    statusFilter.value = 'all';
+                    pageSizeSelect.value = '5';
+                    pageSize = 5;
+                    applyFilter();
+                });
+
+                pageSizeSelect.addEventListener('change', () => {
+                    pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                    currentPage = 1;
+                    render();
+                });
+
+                render();
+            }
+
+            if (editModal) {
+                editModal.addEventListener('show.bs.modal', event => {
+                    const trigger = event.relatedTarget;
+                    if (!(trigger instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const idInput = document.getElementById('editMemberId');
+                    const emailInput = document.getElementById('editEmail');
+                    const phoneInput = document.getElementById('editPhone');
+                    const activeInput = document.getElementById('editActive');
+
+                    if (!(idInput instanceof HTMLInputElement) || !(emailInput instanceof HTMLInputElement) || !(phoneInput instanceof HTMLInputElement) || !(activeInput instanceof HTMLSelectElement)) {
+                        return;
+                    }
+
+                    idInput.value = trigger.dataset.memberId || '';
+                    emailInput.value = trigger.dataset.email || '';
+                    phoneInput.value = trigger.dataset.phone || '';
+                    activeInput.value = trigger.dataset.active || 'true';
+
+                    const editEmailError = document.getElementById('editEmailError');
+                    const editPhoneError = document.getElementById('editPhoneError');
+                    setFieldError(emailInput, editEmailError, '');
+                    setFieldError(phoneInput, editPhoneError, '');
+                });
+            }
+
+            if (editForm instanceof HTMLFormElement) {
+                const editMemberId = document.getElementById('editMemberId');
+                const editEmail = document.getElementById('editEmail');
+                const editPhone = document.getElementById('editPhone');
+                const editEmailError = document.getElementById('editEmailError');
+                const editPhoneError = document.getElementById('editPhoneError');
+
+                editForm.addEventListener('submit', event => {
+                    const currentId = Number.parseInt((editMemberId instanceof HTMLInputElement ? editMemberId.value : '0'), 10) || 0;
+                    const valid = validateEmailPhone(editEmail, editPhone, editEmailError, editPhoneError, currentId);
+                    if (!valid) {
+                        event.preventDefault();
+                    }
+                });
+
+                [editEmail, editPhone].forEach(el => {
+                    if (el instanceof HTMLInputElement) {
+                        el.addEventListener('input', () => {
+                            const currentId = Number.parseInt((editMemberId instanceof HTMLInputElement ? editMemberId.value : '0'), 10) || 0;
+                            validateEmailPhone(editEmail, editPhone, editEmailError, editPhoneError, currentId);
+                        });
+                    }
+                });
+            }
+        })();
+    </script>
+}
+
+
+
+
+
+
