@@ -1,0 +1,1523 @@
+﻿@model List<Client_web.Models.ViewModels.LoanVm>
+@{
+    ViewData["Title"] = "Phiếu mượn";
+    var memberSeedJson = ViewBag.MemberSeedJson as string ?? "[]";
+    var copySeedJson = ViewBag.CopySeedJson as string ?? "[]";
+    var createLoanError = TempData["CreateLoanError"] as string ?? string.Empty;
+    var reservations = ViewBag.Reservations as List<Client_web.Models.ViewModels.LoanReservationVm> ?? new List<Client_web.Models.ViewModels.LoanReservationVm>();
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Danh sách phiếu mượn</h3>
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#createReservationModal">Đặt trước sách</button>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createLoanModal">Tạo phiếu mượn</button>
+    </div>
+</div>
+
+<partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+<div class="table-wrap mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col-lg-5">
+            <input id="loanSearchInput" class="form-control" placeholder="Tìm theo ID, thành viên, nhân viên" />
+        </div>
+        <div class="col-lg-3">
+            <select id="loanStatusFilter" class="form-select">
+                <option value="all">Tất cả trạng thái</option>
+                <option value="borrowing">Đang mượn</option>
+                <option value="returned">Đã trả</option>
+                <option value="overdue">Quá hạn</option>
+                <option value="lost">Mất sách</option>
+            </select>
+        </div>
+        <div class="col-lg-4 d-flex justify-content-lg-end gap-2">
+            <button type="button" id="applyLoanFilter" class="btn btn-primary">Tìm kiếm</button>
+            <button type="button" id="resetLoanFilter" class="btn btn-filter-reset">Xóa bộ lọc</button>
+        </div>
+    </div>
+</div>
+
+<div class="table-wrap">
+    <table class="table table-striped align-middle" id="loansTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Thành viên</th>
+                <th>Nhân viên</th>
+                <th>Ngày mượn</th>
+                <th>Hạn trả</th>
+                <th>Ngày trả</th>
+                <th>Trạng thái</th>
+                <th>Số cuốn</th>
+                <th class="text-end">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Count == 0)
+            {
+                <tr>
+                    <td colspan="9" class="text-muted">Chưa có phiếu mượn.</td>
+                </tr>
+            }
+            @foreach (var item in Model)
+            {
+                var rowSearch = string.Join(" ", new[]
+                {
+                    item.LoanId.ToString(),
+                    item.Member,
+                    item.ProcessedBy
+                }).ToLowerInvariant();
+                var statusLower = (item.Status ?? string.Empty).ToLowerInvariant();
+                var isReturned = statusLower == "returned";
+                var isOverdue = statusLower == "overdue";
+                var disableReturn = isReturned;
+                var disableRenew = isReturned || isOverdue || item.RenewalCount >= 2;
+                <tr data-search="@rowSearch" data-status="@statusLower">
+                    <td>@item.LoanId</td>
+                    <td>@item.Member</td>
+                    <td>@item.ProcessedBy</td>
+                    <td>@item.LoanDate</td>
+                    <td>
+                        @item.DueDate
+                        <div class="text-muted small">Gia hạn: @item.RenewalCount/2</div>
+                    </td>
+                    <td>@item.ReturnDate</td>
+                    <td>@(item.StatusText ?? item.Status)</td>
+                    <td>@item.ItemCount</td>
+                    <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-open-detail" data-bs-toggle="modal" data-bs-target="#loanDetailModal" data-loan-id="@item.LoanId">Chi tiết</button>
+                        <a class="btn btn-sm btn-outline-dark" asp-action="PrintReceipt" asp-route-loanId="@item.LoanId" target="_blank">In phiếu</a>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary btn-open-return"
+                                data-bs-toggle="modal"
+                                data-bs-target="#returnLoanModal"
+                                data-loan-id="@item.LoanId"
+                                disabled="@disableReturn"
+                                title="@(disableReturn ? "Phiếu đã trả không hỗ trợ sách thêm." : null)">
+                            Trả sách
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger btn-open-renew"
+                                data-bs-toggle="modal"
+                                data-bs-target="#renewLoanModal"
+                                data-loan-id="@item.LoanId"
+                                data-due-date="@item.DueDate"
+                                disabled="@disableRenew"
+                                title="@(disableRenew ? "Phiếu đã trả, quá hạn hoặc đạt giới hạn gia hạn." : null)">
+                            Gia hạn
+                        </button>
+                    </td>
+                </tr>
+            }
+            <tr id="loanNoResultRow" style="display:none;">
+                <td colspan="9" class="text-muted">Không có phiếu mượn phù hợp bộ lọc.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="catalog-footer mt-3">
+        <div class="catalog-pager" id="loanPager"></div>
+        <div class="catalog-page-size">
+            <label for="loanPageSize" class="form-label mb-0">Hiển thị</label>
+            <select id="loanPageSize" class="form-select form-select-sm">
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="table-wrap mt-4 reservation-list-table">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Danh sách đặt trước</h5>
+        <span class="text-muted small">Ưu tiên theo thời gian yêu cầu, hệ thống tự giữ sách khi có bản trả phù hợp.</span>
+    </div>
+    <table class="table table-sm table-striped align-middle mb-0">
+        <thead>
+            <tr>
+                <th>Mã</th>
+                <th>Thời gian</th>
+                <th>Thành viên</th>
+                <th>Đầu sách</th>
+                <th>Trạng thái</th>
+                <th>Thứ tự</th>
+                <th>Bản sao đã giữ</th>
+                <th>Ghi chú</th>
+                <th class="text-end">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (reservations.Count == 0)
+            {
+                <tr>
+                    <td colspan="9" class="text-muted">Chưa có yêu cầu đặt trước.</td>
+                </tr>
+            }
+            else
+            {
+                foreach (var reservation in reservations)
+                {
+                    var reservationStatus = (reservation.Status ?? string.Empty).ToLowerInvariant();
+                    var badgeClass = reservationStatus switch
+                    {
+                        "ready" => "text-bg-success",
+                        "pending" => "text-bg-warning",
+                        "fulfilled" => "text-bg-secondary",
+                        "cancelled" => "text-bg-dark",
+                        "expired" => "text-bg-light text-dark",
+                        _ => "text-bg-light text-dark"
+                    };
+                    <tr>
+                        <td>@reservation.ReservationId</td>
+                        <td>@reservation.RequestedAt</td>
+                        <td>@reservation.Member (@reservation.MemberCode)</td>
+                        <td>@reservation.BookTitle</td>
+                        <td><span class="badge @badgeClass">@(string.IsNullOrWhiteSpace(reservation.StatusText) ? reservation.Status : reservation.StatusText)</span></td>
+                        <td>@(reservation.QueuePosition > 0 ? reservation.QueuePosition.ToString() : "-")</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(reservation.ReservedBarcode))
+                            {
+                                <span class="badge text-bg-info">@reservation.ReservedBarcode</span>
+                            }
+                            else
+                            {
+                                <span>-</span>
+                            }
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(reservation.Note) ? "-" : reservation.Note)</td>
+                        <td class="text-end">
+                            @if (reservation.CanCancel)
+                            {
+                                <form asp-action="CancelReservation" method="post" class="d-inline" onsubmit="return confirm('Hủy yêu cầu đặt trước này?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="reservationId" value="@reservation.ReservationId" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Hủy</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="modal fade" id="createLoanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-create-loan-wide">
+        <div class="modal-content">
+            <form asp-action="Create" method="post" novalidate>
+                @Html.AntiForgeryToken()
+                <input type="hidden" id="createLoanServerError" value="@createLoanError" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo phiếu mượn</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-lg-4 border-end">
+                            <div class="mb-3">
+                                <label class="form-label" for="loanMemberPhone">Số điện thoại thành viên</label>
+                                <div class="position-relative">
+                                    <input id="loanMemberPhone" class="form-control" placeholder="Nhập số điện thoại..." autocomplete="off" required />
+                                    <div id="loanMemberPhoneSuggestions" class="suggestion-panel" style="display:none;"></div>
+                                </div>
+                                <div class="invalid-feedback" id="loanMemberPhoneError"></div>
+                                <input type="hidden" id="loanMemberCode" name="memberCode" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="loanMemberName">Tên thành viên</label>
+                                <input id="loanMemberName" class="form-control" readonly />
+                                <div id="loanMemberDebtWarning" class="alert alert-warning py-2 px-3 mt-2 mb-0 small" style="display:none;"></div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="loanDueDate">Ngày trả</label>
+                                <input id="loanDueDate" class="form-control" type="date" name="dueDate" required />
+                                <div class="invalid-feedback" id="loanDueDateError"></div>
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label" for="loanNote">Ghi chú</label>
+                                <textarea id="loanNote" class="form-control" name="note" rows="4"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-8">
+                            <input type="hidden" id="selectedBarcodes" name="selectedBarcodes" />
+                            <div class="row g-2 align-items-end mb-3">
+                                <div class="col-md-5">
+                                    <label class="form-label" for="loanBookTitle">Tên sản phẩm</label>
+                                    <div class="position-relative">
+                                        <input id="loanBookTitle" class="form-control" placeholder="Nhập tên sách..." autocomplete="off" required />
+                                        <div id="loanBookTitleSuggestions" class="suggestion-panel" style="display:none;"></div>
+                                    </div>
+                                    <div class="invalid-feedback" id="loanBookTitleError"></div>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label" for="loanBarcode">Mã vạch</label>
+                                    <div class="position-relative">
+                                        <input id="loanBarcode" class="form-control" placeholder="Chọn tên sản phẩm trước" autocomplete="off" disabled required />
+                                        <div id="loanBarcodeSuggestions" class="suggestion-panel" style="display:none;"></div>
+                                    </div>
+                                    <div class="invalid-feedback" id="loanBarcodeError"></div>
+                                </div>
+                                <div class="col-md-2 d-grid">
+                                    <button type="button" id="addLoanItemButton" class="btn btn-outline-primary">Thêm</button>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped align-middle mb-0" id="loanCreateItemsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Tên sản phẩm</th>
+                                            <th>Mã vạch</th>
+                                            <th>Tình trạng</th>
+                                            <th class="text-end">Thao tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="loanCreateItemsBody">
+                                        <tr id="loanCreateEmptyRow">
+                                            <td colspan="4" class="text-muted">Chưa có sản phẩm nào được thêm.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span id="createLoanErrorText" class="text-danger small me-auto">@createLoanError</span>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Tạo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="createReservationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="CreateReservation" method="post" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Đặt trước sách</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="reservationMemberPhone">Số điện thoại thành viên</label>
+                        <div class="position-relative">
+                            <input id="reservationMemberPhone" class="form-control" placeholder="Nhập số điện thoại..." autocomplete="off" required />
+                            <div id="reservationMemberPhoneSuggestions" class="suggestion-panel" style="display:none;"></div>
+                        </div>
+                        <input type="hidden" id="reservationMemberCode" name="memberCode" />
+                        <div id="reservationMemberName" class="form-text"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="reservationBookTitle">Đầu sách cần đặt</label>
+                        <div class="position-relative">
+                            <input id="reservationBookTitle" class="form-control" placeholder="Nhập tên sách..." autocomplete="off" required />
+                            <div id="reservationBookTitleSuggestions" class="suggestion-panel" style="display:none;"></div>
+                        </div>
+                        <input type="hidden" id="reservationBookId" name="bookId" />
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label" for="reservationNote">Ghi chú</label>
+                        <textarea id="reservationNote" class="form-control" name="note" rows="3" placeholder="Ví dụ: Khách cần mượn gấp trong tuần này"></textarea>
+                    </div>
+
+                    <div id="reservationError" class="text-danger small mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Tạo đặt trước</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="loanDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết phiếu mượn</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body">
+                <div id="loanDetailAlert" class="alert alert-danger" style="display:none;"></div>
+                <div id="loanDetailSummary" class="small text-muted mb-2"></div>
+                <div id="loanDetailNote" class="small mb-3"></div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Tên sách</th>
+                                <th>Mã vạch</th>
+                                <th>Trạng thái</th>
+                                <th>Tình trạng</th>
+                                <th>Đã trả lúc</th>
+                            </tr>
+                        </thead>
+                        <tbody id="loanDetailBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="returnLoanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-return-wide">
+        <div class="modal-content">
+            <form asp-action="ReturnSelected" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Trả sách</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="returnBarcodes" name="barcodes" />
+                    <input type="hidden" id="returnConditionAfters" name="conditionAfters" />
+                    <div id="returnLoanSummary" class="small text-muted mb-2"></div>
+                    <div id="returnLoanAlert" class="alert alert-danger" style="display:none;"></div>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Tên sách</th>
+                                    <th>Mã vạch</th>
+                                    <th>Tình trạng hiện tại</th>
+                                    <th>Tình trạng sau trả</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="returnLoanItemsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span id="returnSelectionError" class="text-danger small me-auto"></span>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary" id="returnSelectedButton">Trả sách đã chọn</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="renewLoanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="Renew" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Gia hạn phiếu mượn</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <input id="renewLoanId" type="hidden" name="loanId" />
+                    <div class="mb-1">
+                        <label class="form-label" for="renewNewDueDate">Ngày gia hạn mới</label>
+                        <input id="renewNewDueDate" class="form-control" type="date" name="newDueDate" required />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Gia hạn</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+(() => {
+            const table = document.getElementById('loansTable');
+            const searchInput = document.getElementById('loanSearchInput');
+            const statusFilter = document.getElementById('loanStatusFilter');
+            const applyButton = document.getElementById('applyLoanFilter');
+            const resetButton = document.getElementById('resetLoanFilter');
+            const pager = document.getElementById('loanPager');
+            const pageSizeSelect = document.getElementById('loanPageSize');
+            const noResultRow = document.getElementById('loanNoResultRow');
+            const renewModal = document.getElementById('renewLoanModal');
+            const detailModal = document.getElementById('loanDetailModal');
+            const returnModal = document.getElementById('returnLoanModal');
+
+            const memberSeed = @Html.Raw(memberSeedJson);
+            const copySeed = @Html.Raw(copySeedJson);
+
+            const reservationBooks = (() => {
+                const map = new Map();
+                if (!Array.isArray(copySeed)) {
+                    return [];
+                }
+
+                for (const item of copySeed) {
+                    const bookIdRaw = item.bookId ?? item.BookId;
+                    const titleRaw = item.title ?? item.Title;
+                    const statusRaw = item.copyStatus ?? item.CopyStatus;
+                    const isActiveRaw = item.isActive ?? item.IsActive;
+
+                    const bookId = Number.parseInt(String(bookIdRaw ?? ''), 10);
+                    const title = String(titleRaw ?? '').trim();
+                    const status = String(statusRaw ?? '').trim().toLowerCase();
+                    const isActive = isActiveRaw === undefined ? true : Boolean(isActiveRaw);
+                    if (!Number.isInteger(bookId) || bookId <= 0 || !title || !isActive) {
+                        continue;
+                    }
+
+                    const current = map.get(bookId) || {
+                        bookId,
+                        title,
+                        availableCount: 0,
+                        borrowedCount: 0,
+                        reservedCount: 0,
+                        totalCount: 0
+                    };
+
+                    current.totalCount += 1;
+                    if (status === 'available') {
+                        current.availableCount += 1;
+                    } else if (status === 'borrowed') {
+                        current.borrowedCount += 1;
+                    } else if (status === 'reserved') {
+                        current.reservedCount += 1;
+                    }
+
+                    map.set(bookId, current);
+                }
+
+                return Array.from(map.values()).sort((a, b) => a.title.localeCompare(b.title));
+            })();
+
+            const viCopyStatus = status => ({
+                available: 'Có sẵn',
+                borrowed: 'Đang mượn',
+                reserved: 'Đã đặt trước',
+                maintenance: 'Bảo trì',
+                lost: 'Thất lạc',
+                damaged: 'Hư hỏng',
+                disposed: 'Thanh lý'
+            }[(status || '').toLowerCase()] || status || '');
+
+            const viLoanStatus = status => ({
+                borrowing: 'Đang mượn',
+                returned: 'Đã trả',
+                overdue: 'Quá hạn',
+                lost: 'Mất sách'
+            }[(status || '').toLowerCase()] || status || '');
+
+            const viCondition = condition => ({
+                new: 'Mới',
+                good: 'Tốt',
+                worn: 'Cũ',
+                damaged: 'Hư hỏng',
+                lost: 'Thất lạc'
+            }[(condition || '').toLowerCase()] || condition || '');
+
+            const normalizeSearch = window.normalizeSearchText;
+
+            const formatDateLocal = date => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            const parseDateOnly = value => {
+                const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec((value || '').trim());
+                if (!match) {
+                    return null;
+                }
+
+                const parsed = new Date(Number.parseInt(match[1], 10), Number.parseInt(match[2], 10) - 1, Number.parseInt(match[3], 10));
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+            };
+
+            if (table && pager && searchInput instanceof HTMLInputElement && statusFilter instanceof HTMLSelectElement && applyButton instanceof HTMLButtonElement && resetButton instanceof HTMLButtonElement && pageSizeSelect instanceof HTMLSelectElement) {
+                const rows = Array.from(table.querySelectorAll('tbody tr[data-search]'));
+                let keyword = '';
+                let status = 'all';
+                let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                let currentPage = 1;
+
+                const getFilteredRows = () => rows.filter(row => {
+                    const rowSearch = normalizeSearch(row.getAttribute('data-search') || '');
+                    const rowStatus = (row.getAttribute('data-status') || '').toLowerCase();
+                    const matchKeyword = !keyword || rowSearch.includes(keyword);
+                    const matchStatus = status === 'all' || rowStatus === status;
+                    return matchKeyword && matchStatus;
+                });
+
+                const render = () => {
+                    const filtered = getFilteredRows();
+                    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+                    if (currentPage > totalPages) {
+                        currentPage = totalPages;
+                    }
+
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+
+                    const start = (currentPage - 1) * pageSize;
+                    const end = start + pageSize;
+                    filtered.slice(start, end).forEach(row => {
+                        row.style.display = '';
+                    });
+
+                    if (noResultRow) {
+                        noResultRow.style.display = rows.length > 0 && filtered.length === 0 ? '' : 'none';
+                    }
+
+                    window.renderPagination({
+                        pager,
+                        totalPages,
+                        currentPage,
+                        onPageChange: page => {
+                            currentPage = page;
+                            render();
+                        }
+                    });
+                };
+
+                const applyFilter = () => {
+                    keyword = normalizeSearch(searchInput.value);
+                    status = statusFilter.value.toLowerCase();
+                    currentPage = 1;
+                    render();
+                };
+
+                applyButton.addEventListener('click', applyFilter);
+                searchInput.addEventListener('input', applyFilter);
+                statusFilter.addEventListener('change', applyFilter);
+                resetButton.addEventListener('click', () => {
+                    searchInput.value = '';
+                    statusFilter.value = 'all';
+                    pageSizeSelect.value = '5';
+                    pageSize = 5;
+                    applyFilter();
+                });
+
+                pageSizeSelect.addEventListener('change', () => {
+                    pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                    currentPage = 1;
+                    render();
+                });
+
+                render();
+            }
+
+            const createLoanForm = document.querySelector('#createLoanModal form');
+            const createLoanModal = document.getElementById('createLoanModal');
+            const createLoanServerError = document.getElementById('createLoanServerError');
+            const createLoanErrorText = document.getElementById('createLoanErrorText');
+            const memberPhoneInput = document.getElementById('loanMemberPhone');
+            const memberCodeInput = document.getElementById('loanMemberCode');
+            const memberNameInput = document.getElementById('loanMemberName');
+            const memberPhoneSuggestions = document.getElementById('loanMemberPhoneSuggestions');
+            const memberPhoneError = document.getElementById('loanMemberPhoneError');
+            const memberDebtWarning = document.getElementById('loanMemberDebtWarning');
+            const dueDateInput = document.getElementById('loanDueDate');
+            const dueDateError = document.getElementById('loanDueDateError');
+            const bookTitleInput = document.getElementById('loanBookTitle');
+            const bookTitleSuggestions = document.getElementById('loanBookTitleSuggestions');
+            const bookTitleError = document.getElementById('loanBookTitleError');
+            const barcodeInput = document.getElementById('loanBarcode');
+            const barcodeSuggestions = document.getElementById('loanBarcodeSuggestions');
+            const barcodeError = document.getElementById('loanBarcodeError');
+            const addLoanItemButton = document.getElementById('addLoanItemButton');
+            const selectedBarcodesInput = document.getElementById('selectedBarcodes');
+            const loanCreateItemsBody = document.getElementById('loanCreateItemsBody');
+            const loanCreateEmptyRow = document.getElementById('loanCreateEmptyRow');
+
+            const pick = (obj, ...keys) => {
+                for (const key of keys) {
+                    if (obj && obj[key] !== undefined && obj[key] !== null) {
+                        return obj[key];
+                    }
+                }
+                return null;
+            };
+
+            const activeMembers = Array.isArray(memberSeed)
+                ? memberSeed
+                    .map(x => ({
+                        memberCode: String(pick(x, 'memberCode', 'MemberCode') || '').trim(),
+                        fullName: String(pick(x, 'fullName', 'FullName') || '').trim(),
+                        phone: String(pick(x, 'phone', 'Phone') || '').trim(),
+                        isActive: Boolean(pick(x, 'isActive', 'IsActive'))
+                    }))
+                    .filter(x => x.isActive && x.phone && x.memberCode)
+                : [];
+
+            const candidateCopies = Array.isArray(copySeed)
+                ? copySeed
+                    .map(x => ({
+                        barcode: String(pick(x, 'barcode', 'Barcode') || '').trim(),
+                        copyStatus: String(pick(x, 'copyStatus', 'CopyStatus') || '').trim(),
+                        physicalCondition: String(pick(x, 'physicalCondition', 'PhysicalCondition') || '').trim(),
+                        title: String(pick(x, 'title', 'Title') || '').trim(),
+                        isbn: String(pick(x, 'isbn', 'Isbn') || '').trim(),
+                        reservedForMemberCode: String(pick(x, 'reservedForMemberCode', 'ReservedForMemberCode') || '').trim(),
+                        reservedForMemberName: String(pick(x, 'reservedForMemberName', 'ReservedForMemberName') || '').trim()
+                    }))
+                    .filter(x => x.barcode
+                        && x.title
+                        && !['lost', 'damaged'].includes(x.physicalCondition.toLowerCase()))
+                : [];
+
+            const setInvalid = (input, errorEl, message) => {
+                if (!(input instanceof HTMLInputElement) || !(errorEl instanceof HTMLElement)) {
+                    return;
+                }
+                if (!message) {
+                    input.classList.remove('is-invalid');
+                    errorEl.textContent = '';
+                    return;
+                }
+                input.classList.add('is-invalid');
+                errorEl.textContent = message;
+            };
+
+            const hidePanel = panel => {
+                if (panel instanceof HTMLElement) {
+                    panel.style.display = 'none';
+                    panel.innerHTML = '';
+                }
+            };
+
+            const showPanel = (panel, items, getLabel, onPick) => {
+                if (!(panel instanceof HTMLElement)) {
+                    return;
+                }
+
+                panel.innerHTML = '';
+                if (!items.length) {
+                    panel.style.display = 'none';
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                items.forEach(item => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'suggestion-item';
+                    button.textContent = getLabel(item);
+                    button.addEventListener('click', () => {
+                        onPick(item);
+                        hidePanel(panel);
+                    });
+                    fragment.appendChild(button);
+                });
+
+                panel.appendChild(fragment);
+                panel.style.display = 'block';
+            };
+
+            const bindMemberByPhone = (showError = false) => {
+                const phone = memberPhoneInput instanceof HTMLInputElement ? memberPhoneInput.value.trim() : '';
+                const member = activeMembers.find(x => x.phone === phone);
+                if (memberCodeInput instanceof HTMLInputElement) {
+                    memberCodeInput.value = member?.memberCode || '';
+                }
+                if (memberNameInput instanceof HTMLInputElement) {
+                    memberNameInput.value = member?.fullName || '';
+                }
+
+                if (showError) {
+                    setInvalid(memberPhoneInput, memberPhoneError, member ? '' : 'Không tìm thấy thành viên đang hoạt động với số điện thoại này.');
+                } else {
+                    setInvalid(memberPhoneInput, memberPhoneError, '');
+                }
+
+                void renderMemberDebtWarning(member?.memberCode || '');
+            };
+
+            const renderMemberDebtWarning = async memberCode => {
+                if (!(memberDebtWarning instanceof HTMLElement)) {
+                    return;
+                }
+
+                if (!memberCode) {
+                    memberDebtWarning.style.display = 'none';
+                    memberDebtWarning.textContent = '';
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`@Url.Action("MemberStatusData", "Loans")?memberCode=${encodeURIComponent(memberCode)}`);
+                    const result = await response.json();
+                    if (!result.success || !result.data) {
+                        memberDebtWarning.style.display = 'none';
+                        memberDebtWarning.textContent = '';
+                        return;
+                    }
+
+                    const outstandingFine = Number(result.data.outstandingFine || result.data.OutstandingFine || 0);
+                    const overdueLoans = Number(result.data.overdueLoans || result.data.OverdueLoans || 0);
+                    const loanBlocked = Boolean(result.data.loanBlocked || result.data.LoanBlocked || false);
+
+                    if (outstandingFine > 0 || overdueLoans > 0) {
+                        const debtText = outstandingFine.toLocaleString('vi-VN');
+                        memberDebtWarning.textContent = loanBlocked
+                            ? `Cảnh báo: Thành viên còn nợ ${debtText} đ và hiện đang bị chặn mượn thêm.`
+                            : `Lưu ý: Thành viên còn nợ ${debtText} đ${overdueLoans > 0 ? `, có ${overdueLoans} phiếu quá hạn` : ''}.`;
+                        memberDebtWarning.style.display = '';
+                    } else {
+                        memberDebtWarning.style.display = 'none';
+                        memberDebtWarning.textContent = '';
+                    }
+                } catch {
+                    memberDebtWarning.style.display = 'none';
+                    memberDebtWarning.textContent = '';
+                }
+            };
+
+            const validateCreateLoan = selectedItems => {
+                const memberCode = memberCodeInput instanceof HTMLInputElement ? memberCodeInput.value.trim() : '';
+
+                const matchedMember = memberCode ? activeMembers.find(x => x.memberCode === memberCode) : null;
+                setInvalid(memberPhoneInput, memberPhoneError, matchedMember ? '' : 'Vui lòng chọn thành viên hợp lệ.');
+
+                const dueDateRaw = dueDateInput instanceof HTMLInputElement ? dueDateInput.value : '';
+                let dueDateValid = false;
+                if (dueDateRaw) {
+                    const selectedDate = new Date(`${dueDateRaw}T00:00:00`);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    dueDateValid = selectedDate > today;
+                }
+                setInvalid(dueDateInput, dueDateError, dueDateValid ? '' : 'Ngày trả phải sau ngày hiện tại.');
+
+                const hasItems = selectedItems.length > 0;
+                if (createLoanErrorText instanceof HTMLElement) {
+                    createLoanErrorText.textContent = hasItems ? '' : 'Vui lòng thêm ít nhất 1 sản phẩm.';
+                }
+
+                return !!matchedMember && dueDateValid && hasItems;
+            };
+
+            if (createLoanForm instanceof HTMLFormElement) {
+                const selectedItems = [];
+                let lastMemberCode = memberCodeInput instanceof HTMLInputElement ? memberCodeInput.value.trim() : '';
+
+                if (createLoanServerError instanceof HTMLInputElement && createLoanServerError.value.trim() && createLoanModal && window.bootstrap) {
+                    const modal = bootstrap.Modal.getOrCreateInstance(createLoanModal);
+                    modal.show();
+                }
+
+                const phoneSuggestions = activeMembers
+                    .map(x => x.phone)
+                    .filter((v, i, a) => v && a.indexOf(v) === i)
+                    .sort((a, b) => a.localeCompare(b));
+
+                const isCopyBorrowableForSelectedMember = copy => {
+                    const status = copy.copyStatus.toLowerCase();
+                    const memberCode = memberCodeInput instanceof HTMLInputElement ? memberCodeInput.value.trim() : '';
+                    return status === 'available'
+                        || (status === 'reserved' && memberCode && copy.reservedForMemberCode === memberCode);
+                };
+
+                const getTitleSuggestions = () => candidateCopies
+                    .filter(isCopyBorrowableForSelectedMember)
+                    .map(x => x.title)
+                    .filter((v, i, a) => v && a.indexOf(v) === i)
+                    .sort((a, b) => a.localeCompare(b));
+
+                const getBarcodeSuggestions = title => {
+                    const keyword = normalizeSearch(title);
+                    return candidateCopies
+                        .filter(x => isCopyBorrowableForSelectedMember(x)
+                            && (!keyword || normalizeSearch(x.title) === keyword)
+                            && !selectedItems.some(i => i.barcode === x.barcode))
+                        .slice(0, 30);
+                };
+
+                const formatBarcodeSuggestion = copy => copy.copyStatus.toLowerCase() === 'reserved'
+                    ? `${copy.barcode} - đã giữ cho ${copy.reservedForMemberName || copy.reservedForMemberCode}`
+                    : copy.barcode;
+
+                const resetSelectedItemsIfMemberChanged = () => {
+                    const currentMemberCode = memberCodeInput instanceof HTMLInputElement ? memberCodeInput.value.trim() : '';
+                    if (currentMemberCode === lastMemberCode) {
+                        return;
+                    }
+
+                    lastMemberCode = currentMemberCode;
+                    selectedItems.splice(0, selectedItems.length);
+                    renderSelectedItems();
+                    resetProductSelectors();
+                };
+
+                const applySelectedTitle = selectedTitle => {
+                    if (!(bookTitleInput instanceof HTMLInputElement) || !(barcodeInput instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    bookTitleInput.value = selectedTitle;
+                    barcodeInput.value = '';
+                    const exactTitle = getTitleSuggestions().some(x => normalizeSearch(x) === normalizeSearch(selectedTitle));
+                    barcodeInput.disabled = !exactTitle;
+                    barcodeInput.placeholder = exactTitle ? 'Nhập mã vạch...' : 'Chọn tên sản phẩm trước';
+                    if (!exactTitle) {
+                        hidePanel(barcodeSuggestions);
+                    }
+                };
+
+                const renderSelectedItems = () => {
+                    if (!(loanCreateItemsBody instanceof HTMLElement) || !(selectedBarcodesInput instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    selectedBarcodesInput.value = selectedItems.map(x => x.barcode).join(',');
+                    if (createLoanErrorText instanceof HTMLElement && selectedItems.length > 0) {
+                        createLoanErrorText.textContent = '';
+                    }
+
+                    if (loanCreateEmptyRow instanceof HTMLTableRowElement) {
+                        loanCreateEmptyRow.style.display = selectedItems.length === 0 ? '' : 'none';
+                    }
+
+                    loanCreateItemsBody.querySelectorAll('tr[data-selected-item="true"]').forEach(row => row.remove());
+
+                    selectedItems.forEach(item => {
+                        const reservedBadge = item.copyStatus.toLowerCase() === 'reserved'
+                            ? ' <span class="badge text-bg-info ms-1">Đã giữ</span>'
+                            : '';
+                        const tr = document.createElement('tr');
+                        tr.setAttribute('data-selected-item', 'true');
+                        tr.innerHTML = `
+                            <td>${item.title}</td>
+                            <td>${item.barcode}${reservedBadge}</td>
+                            <td>${viCondition(item.physicalCondition)}</td>
+                            <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger">Xóa</button></td>
+                        `;
+
+                        const removeButton = tr.querySelector('button');
+                        removeButton?.addEventListener('click', () => {
+                            const index = selectedItems.findIndex(x => x.barcode === item.barcode);
+                            if (index >= 0) {
+                                selectedItems.splice(index, 1);
+                                renderSelectedItems();
+                            }
+                        });
+
+                        loanCreateItemsBody.appendChild(tr);
+                    });
+                };
+
+                const resetProductSelectors = () => {
+                    if (bookTitleInput instanceof HTMLInputElement) {
+                        bookTitleInput.value = '';
+                    }
+                    if (barcodeInput instanceof HTMLInputElement) {
+                        barcodeInput.value = '';
+                        barcodeInput.disabled = true;
+                        barcodeInput.placeholder = 'Chọn tên sản phẩm trước';
+                    }
+                    setInvalid(bookTitleInput, bookTitleError, '');
+                    setInvalid(barcodeInput, barcodeError, '');
+                    hidePanel(bookTitleSuggestions);
+                    hidePanel(barcodeSuggestions);
+                };
+
+                if (memberPhoneInput instanceof HTMLInputElement) {
+                    memberPhoneInput.addEventListener('input', () => {
+                        const keyword = memberPhoneInput.value.trim();
+                        const items = phoneSuggestions
+                            .filter(x => !keyword || x.startsWith(keyword))
+                            .slice(0, 10);
+
+                        showPanel(memberPhoneSuggestions, items, x => x, picked => {
+                            memberPhoneInput.value = picked;
+                            bindMemberByPhone(false);
+                            resetSelectedItemsIfMemberChanged();
+                        });
+
+                        bindMemberByPhone(false);
+                        resetSelectedItemsIfMemberChanged();
+                    });
+
+                    memberPhoneInput.addEventListener('focus', () => {
+                        const keyword = memberPhoneInput.value.trim();
+                        const items = phoneSuggestions
+                            .filter(x => !keyword || x.startsWith(keyword))
+                            .slice(0, 10);
+                        showPanel(memberPhoneSuggestions, items, x => x, picked => {
+                            memberPhoneInput.value = picked;
+                            bindMemberByPhone(false);
+                            resetSelectedItemsIfMemberChanged();
+                        });
+                    });
+
+                    memberPhoneInput.addEventListener('blur', () => {
+                        setTimeout(() => hidePanel(memberPhoneSuggestions), 120);
+                        bindMemberByPhone(true);
+                        resetSelectedItemsIfMemberChanged();
+                    });
+                }
+
+                if (bookTitleInput instanceof HTMLInputElement) {
+                    bookTitleInput.addEventListener('input', () => {
+                        const keyword = normalizeSearch(bookTitleInput.value);
+                        const items = getTitleSuggestions()
+                            .filter(x => {
+                                const normalized = normalizeSearch(x);
+                                return !keyword || normalized.includes(keyword);
+                            })
+                            .slice(0, 10);
+
+                        showPanel(bookTitleSuggestions, items, x => x, picked => {
+                            applySelectedTitle(picked);
+                            hidePanel(barcodeSuggestions);
+                        });
+
+                        setInvalid(bookTitleInput, bookTitleError, '');
+                        applySelectedTitle(bookTitleInput.value);
+                    });
+
+                    bookTitleInput.addEventListener('focus', () => {
+                        const keyword = normalizeSearch(bookTitleInput.value);
+                        const items = getTitleSuggestions()
+                            .filter(x => {
+                                const normalized = normalizeSearch(x);
+                                return !keyword || normalized.includes(keyword);
+                            })
+                            .slice(0, 10);
+                        showPanel(bookTitleSuggestions, items, x => x, picked => {
+                            applySelectedTitle(picked);
+                        });
+                    });
+
+                    bookTitleInput.addEventListener('blur', () => {
+                        setTimeout(() => hidePanel(bookTitleSuggestions), 120);
+                    });
+                }
+
+                if (barcodeInput instanceof HTMLInputElement) {
+                    barcodeInput.addEventListener('input', () => {
+                        if (barcodeInput.disabled) {
+                            return;
+                        }
+
+                        const items = getBarcodeSuggestions(bookTitleInput instanceof HTMLInputElement ? bookTitleInput.value : '')
+                            .filter(x => !barcodeInput.value.trim() || x.barcode.toLowerCase().includes(barcodeInput.value.trim().toLowerCase()))
+                            .slice(0, 10);
+
+                        showPanel(
+                            barcodeSuggestions,
+                            items,
+                            formatBarcodeSuggestion,
+                            picked => {
+                                barcodeInput.value = picked.barcode;
+                            }
+                        );
+
+                        setInvalid(barcodeInput, barcodeError, '');
+                    });
+
+                    barcodeInput.addEventListener('focus', () => {
+                        if (barcodeInput.disabled) {
+                            return;
+                        }
+
+                        const items = getBarcodeSuggestions(bookTitleInput instanceof HTMLInputElement ? bookTitleInput.value : '').slice(0, 10);
+                        showPanel(
+                            barcodeSuggestions,
+                            items,
+                            formatBarcodeSuggestion,
+                            picked => {
+                                barcodeInput.value = picked.barcode;
+                            }
+                        );
+                    });
+
+                    barcodeInput.addEventListener('blur', () => {
+                        setTimeout(() => hidePanel(barcodeSuggestions), 120);
+                    });
+                }
+
+                if (addLoanItemButton instanceof HTMLButtonElement) {
+                    addLoanItemButton.addEventListener('click', () => {
+                        const title = bookTitleInput instanceof HTMLInputElement ? bookTitleInput.value.trim() : '';
+                        const barcode = barcodeInput instanceof HTMLInputElement ? barcodeInput.value.trim() : '';
+
+                        const hasTitle = getTitleSuggestions().some(x => normalizeSearch(x) === normalizeSearch(title));
+                        setInvalid(bookTitleInput, bookTitleError, hasTitle ? '' : 'Vui lòng chọn tên sản phẩm từ gợi ý.');
+
+                        const matchedCopy = getBarcodeSuggestions(title).find(x => x.barcode.toLowerCase() === barcode.toLowerCase());
+                        setInvalid(barcodeInput, barcodeError, matchedCopy ? '' : 'Vui lòng chọn mã vạch hợp lệ.');
+
+                        if (!hasTitle || !matchedCopy) {
+                            return;
+                        }
+
+                        selectedItems.push(matchedCopy);
+                        renderSelectedItems();
+                        resetProductSelectors();
+                    });
+                }
+
+                if (dueDateInput instanceof HTMLInputElement) {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const tomorrowStr = formatDateLocal(tomorrow);
+                    dueDateInput.min = tomorrowStr;
+                    dueDateInput.value = tomorrowStr;
+                    dueDateInput.addEventListener('change', () => {
+                        setInvalid(dueDateInput, dueDateError, '');
+                    });
+                }
+
+                if (createLoanModal) {
+                    createLoanModal.addEventListener('show.bs.modal', () => {
+                        selectedItems.splice(0, selectedItems.length);
+                        renderSelectedItems();
+                        resetProductSelectors();
+                        if (memberPhoneInput instanceof HTMLInputElement) {
+                            memberPhoneInput.value = '';
+                        }
+                        if (memberCodeInput instanceof HTMLInputElement) {
+                            memberCodeInput.value = '';
+                        }
+                        lastMemberCode = '';
+                        if (memberNameInput instanceof HTMLInputElement) {
+                            memberNameInput.value = '';
+                        }
+                        if (memberDebtWarning instanceof HTMLElement) {
+                            memberDebtWarning.style.display = 'none';
+                            memberDebtWarning.textContent = '';
+                        }
+                        if (dueDateInput instanceof HTMLInputElement) {
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            const tomorrowStr = formatDateLocal(tomorrow);
+                            dueDateInput.min = tomorrowStr;
+                            dueDateInput.value = tomorrowStr;
+                        }
+                        const noteInput = document.getElementById('loanNote');
+                        if (noteInput instanceof HTMLTextAreaElement) {
+                            noteInput.value = '';
+                        }
+                        if (createLoanServerError instanceof HTMLInputElement && createLoanErrorText instanceof HTMLElement) {
+                            createLoanErrorText.textContent = createLoanServerError.value.trim();
+                        }
+                        bindMemberByPhone(false);
+                    });
+                }
+
+                createLoanForm.addEventListener('submit', event => {
+                    if (!validateCreateLoan(selectedItems)) {
+                        event.preventDefault();
+                    }
+                });
+
+                document.addEventListener('click', event => {
+                    const target = event.target;
+                    if (!(target instanceof Node)) {
+                        return;
+                    }
+
+                    if (!(memberPhoneInput instanceof HTMLInputElement) || !memberPhoneInput.parentElement?.contains(target)) {
+                        hidePanel(memberPhoneSuggestions);
+                    }
+                    if (!(bookTitleInput instanceof HTMLInputElement) || !bookTitleInput.parentElement?.contains(target)) {
+                        hidePanel(bookTitleSuggestions);
+                    }
+                    if (!(barcodeInput instanceof HTMLInputElement) || !barcodeInput.parentElement?.contains(target)) {
+                        hidePanel(barcodeSuggestions);
+                    }
+                });
+            }
+
+            const createReservationModal = document.getElementById('createReservationModal');
+            const createReservationForm = createReservationModal?.querySelector('form');
+            const reservationMemberPhoneInput = document.getElementById('reservationMemberPhone');
+            const reservationMemberPhoneSuggestions = document.getElementById('reservationMemberPhoneSuggestions');
+            const reservationMemberCodeInput = document.getElementById('reservationMemberCode');
+            const reservationMemberNameText = document.getElementById('reservationMemberName');
+            const reservationBookTitleInput = document.getElementById('reservationBookTitle');
+            const reservationBookTitleSuggestions = document.getElementById('reservationBookTitleSuggestions');
+            const reservationBookIdInput = document.getElementById('reservationBookId');
+            const reservationError = document.getElementById('reservationError');
+
+            if (createReservationForm instanceof HTMLFormElement) {
+                const memberPhoneSuggestions = activeMembers
+                    .map(x => x.phone)
+                    .filter((v, i, a) => v && a.indexOf(v) === i)
+                    .sort((a, b) => a.localeCompare(b));
+
+                const setReservationMemberByPhone = () => {
+                    if (!(reservationMemberPhoneInput instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    const phone = reservationMemberPhoneInput.value.trim();
+                    const member = activeMembers.find(x => x.phone === phone);
+                    if (reservationMemberCodeInput instanceof HTMLInputElement) {
+                        reservationMemberCodeInput.value = member?.memberCode || '';
+                    }
+                    if (reservationMemberNameText instanceof HTMLElement) {
+                        reservationMemberNameText.textContent = member ? `${member.fullName} (${member.memberCode})` : '';
+                    }
+                };
+
+                if (reservationMemberPhoneInput instanceof HTMLInputElement) {
+                    reservationMemberPhoneInput.addEventListener('input', () => {
+                        const keyword = reservationMemberPhoneInput.value.trim();
+                        const items = memberPhoneSuggestions
+                            .filter(x => !keyword || x.startsWith(keyword))
+                            .slice(0, 10);
+
+                        showPanel(reservationMemberPhoneSuggestions, items, x => x, picked => {
+                            reservationMemberPhoneInput.value = picked;
+                            setReservationMemberByPhone();
+                        });
+
+                        setReservationMemberByPhone();
+                    });
+
+                    reservationMemberPhoneInput.addEventListener('focus', () => {
+                        const keyword = reservationMemberPhoneInput.value.trim();
+                        const items = memberPhoneSuggestions
+                            .filter(x => !keyword || x.startsWith(keyword))
+                            .slice(0, 10);
+
+                        showPanel(reservationMemberPhoneSuggestions, items, x => x, picked => {
+                            reservationMemberPhoneInput.value = picked;
+                            setReservationMemberByPhone();
+                        });
+                    });
+
+                    reservationMemberPhoneInput.addEventListener('blur', () => {
+                        setTimeout(() => hidePanel(reservationMemberPhoneSuggestions), 120);
+                        setReservationMemberByPhone();
+                    });
+                }
+
+                if (reservationBookTitleInput instanceof HTMLInputElement) {
+                    const renderBookSuggestions = () => {
+                        const keyword = normalizeSearch(reservationBookTitleInput.value);
+                        const items = reservationBooks
+                            .filter(x => !keyword || normalizeSearch(x.title).includes(keyword))
+                            .slice(0, 10);
+
+                        showPanel(
+                            reservationBookTitleSuggestions,
+                            items,
+                            x => `${x.title} (có sẵn: ${x.availableCount}, đang mượn: ${x.borrowedCount}, đã giữ: ${x.reservedCount})`,
+                            picked => {
+                                reservationBookTitleInput.value = picked.title;
+                                if (reservationBookIdInput instanceof HTMLInputElement) {
+                                    reservationBookIdInput.value = String(picked.bookId);
+                                }
+                            }
+                        );
+                    };
+
+                    reservationBookTitleInput.addEventListener('input', () => {
+                        if (reservationBookIdInput instanceof HTMLInputElement) {
+                            reservationBookIdInput.value = '';
+                        }
+                        renderBookSuggestions();
+                    });
+
+                    reservationBookTitleInput.addEventListener('focus', renderBookSuggestions);
+                    reservationBookTitleInput.addEventListener('blur', () => {
+                        setTimeout(() => hidePanel(reservationBookTitleSuggestions), 120);
+                    });
+                }
+
+                createReservationForm.addEventListener('submit', event => {
+                    const memberCode = reservationMemberCodeInput instanceof HTMLInputElement ? reservationMemberCodeInput.value.trim() : '';
+                    const bookId = reservationBookIdInput instanceof HTMLInputElement ? reservationBookIdInput.value.trim() : '';
+
+                    if (reservationError instanceof HTMLElement) {
+                        reservationError.textContent = '';
+                    }
+
+                    if (!memberCode || !bookId) {
+                        event.preventDefault();
+                        if (reservationError instanceof HTMLElement) {
+                            reservationError.textContent = 'Vui lòng chọn đúng thành viên và đầu sách từ gợi ý.';
+                        }
+                    }
+                });
+
+                if (createReservationModal instanceof HTMLElement) {
+                    createReservationModal.addEventListener('show.bs.modal', () => {
+                        if (reservationMemberPhoneInput instanceof HTMLInputElement) {
+                            reservationMemberPhoneInput.value = '';
+                        }
+                        if (reservationMemberCodeInput instanceof HTMLInputElement) {
+                            reservationMemberCodeInput.value = '';
+                        }
+                        if (reservationMemberNameText instanceof HTMLElement) {
+                            reservationMemberNameText.textContent = '';
+                        }
+                        if (reservationBookTitleInput instanceof HTMLInputElement) {
+                            reservationBookTitleInput.value = '';
+                        }
+                        if (reservationBookIdInput instanceof HTMLInputElement) {
+                            reservationBookIdInput.value = '';
+                        }
+                        if (reservationError instanceof HTMLElement) {
+                            reservationError.textContent = '';
+                        }
+                    });
+                }
+
+                document.addEventListener('click', event => {
+                    const target = event.target;
+                    if (!(target instanceof Node)) {
+                        return;
+                    }
+
+                    if (!(reservationMemberPhoneInput instanceof HTMLInputElement) || !reservationMemberPhoneInput.parentElement?.contains(target)) {
+                        hidePanel(reservationMemberPhoneSuggestions);
+                    }
+                    if (!(reservationBookTitleInput instanceof HTMLInputElement) || !reservationBookTitleInput.parentElement?.contains(target)) {
+                        hidePanel(reservationBookTitleSuggestions);
+                    }
+                });
+            }
+
+            const fetchLoanDetail = async loanId => {
+                const response = await fetch(`@Url.Action("DetailData", "Loans")?loanId=${encodeURIComponent(loanId)}`);
+                return await response.json();
+            };
+
+            const pickValue = (obj, ...keys) => {
+                for (const key of keys) {
+                    if (obj && obj[key] !== undefined && obj[key] !== null) {
+                        return obj[key];
+                    }
+                }
+                return null;
+            };
+
+            if (detailModal) {
+                detailModal.addEventListener('show.bs.modal', async event => {
+                    const trigger = event.relatedTarget;
+                    if (!(trigger instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const loanId = trigger.dataset.loanId;
+                    const detailBody = document.getElementById('loanDetailBody');
+                    const detailAlert = document.getElementById('loanDetailAlert');
+                    const detailSummary = document.getElementById('loanDetailSummary');
+                    const detailNote = document.getElementById('loanDetailNote');
+                    if (!(detailBody instanceof HTMLElement) || !(detailAlert instanceof HTMLElement) || !(detailSummary instanceof HTMLElement) || !loanId) {
+                        return;
+                    }
+
+                    detailBody.innerHTML = '<tr><td colspan="5" class="text-muted">Đang tải...</td></tr>';
+                    detailAlert.style.display = 'none';
+                    detailSummary.textContent = '';
+                    if (detailNote instanceof HTMLElement) {
+                        detailNote.textContent = '';
+                    }
+
+                    try {
+                        const result = await fetchLoanDetail(loanId);
+                        if (!result.success) {
+                            detailBody.innerHTML = '';
+                            detailAlert.textContent = result.message || 'Không tải được dữ liệu.';
+                            detailAlert.style.display = '';
+                            return;
+                        }
+
+                        const data = result.data;
+                        const loanCode = pickValue(data, 'loanId', 'LoanId') || '';
+                        const memberName = pickValue(data, 'member', 'Member') || '';
+                        const loanStatus = pickValue(data, 'status', 'Status') || '';
+                        const noteText = pickValue(data, 'note', 'Note');
+                        const items = pickValue(data, 'items', 'Items') || [];
+
+                        detailSummary.textContent = `Phiếu #${loanCode} - Thành viên: ${memberName} - Trạng thái: ${viLoanStatus(loanStatus)}`;
+                        if (detailNote instanceof HTMLElement) {
+                            detailNote.innerHTML = `<strong>Ghi chú:</strong> ${noteText ? noteText : '<span class="text-muted">Không có</span>'}`;
+                        }
+
+                        const rowsHtml = items.map(item => `
+                            <tr>
+                                <td>${pickValue(item, 'title', 'Title') || ''}</td>
+                                <td>${pickValue(item, 'barcode', 'Barcode') || ''}</td>
+                                <td>${viCopyStatus(pickValue(item, 'copyStatus', 'CopyStatus'))}</td>
+                                <td>${viCondition(pickValue(item, 'physicalCondition', 'PhysicalCondition'))}</td>
+                                <td>${pickValue(item, 'returnedAt', 'ReturnedAt') || ''}</td>
+                            </tr>
+                        `).join('');
+
+                        detailBody.innerHTML = rowsHtml || '<tr><td colspan="5" class="text-muted">Không có dữ liệu chi tiết.</td></tr>';
+                    } catch {
+                        detailBody.innerHTML = '';
+                        detailAlert.textContent = 'Không thể tải chi tiết phiếu mượn.';
+                        detailAlert.style.display = '';
+                    }
+                });
+            }
+
+            if (returnModal) {
+                returnModal.addEventListener('show.bs.modal', async event => {
+                    const trigger = event.relatedTarget;
+                    if (!(trigger instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const loanId = trigger.dataset.loanId;
+                    const summary = document.getElementById('returnLoanSummary');
+                    const alertBox = document.getElementById('returnLoanAlert');
+                    const body = document.getElementById('returnLoanItemsBody');
+                    const hiddenBarcodes = document.getElementById('returnBarcodes');
+                    const hiddenConditionAfters = document.getElementById('returnConditionAfters');
+                    const returnSelectionError = document.getElementById('returnSelectionError');
+                    const returnSelectedButton = document.getElementById('returnSelectedButton');
+                    const returnForm = returnModal.querySelector('form');
+
+                    if (!(summary instanceof HTMLElement) || !(alertBox instanceof HTMLElement) || !(body instanceof HTMLElement) || !(hiddenBarcodes instanceof HTMLInputElement) || !(hiddenConditionAfters instanceof HTMLInputElement) || !(returnSelectionError instanceof HTMLElement) || !(returnSelectedButton instanceof HTMLButtonElement) || !(returnForm instanceof HTMLFormElement) || !loanId) {
+                        return;
+                    }
+
+                    summary.textContent = '';
+                    hiddenBarcodes.value = '';
+                    hiddenConditionAfters.value = '';
+                    returnSelectionError.textContent = '';
+                    alertBox.style.display = 'none';
+                    body.innerHTML = '<tr><td colspan="5" class="text-muted">Đang tải...</td></tr>';
+
+                    try {
+                        const result = await fetchLoanDetail(loanId);
+                        if (!result.success) {
+                            body.innerHTML = '';
+                            alertBox.textContent = result.message || 'Không tải được dữ liệu.';
+                            alertBox.style.display = '';
+                            return;
+                        }
+
+                        const data = result.data;
+                        summary.textContent = `Phiếu #${data.loanId} - Thành viên: ${data.member}`;
+
+                        const activeItems = (data.items || []).filter(item => !item.returnedAt);
+                        if (activeItems.length === 0) {
+                            body.innerHTML = '<tr><td colspan="5" class="text-muted">Phiếu này không cần sách đang mượn.</td></tr>';
+                            return;
+                        }
+
+                        body.innerHTML = activeItems.map(item => `
+                            <tr>
+                                <td>${item.title || ''}</td>
+                                <td>${item.barcode || ''}</td>
+                                <td>${viCondition(item.physicalCondition)}</td>
+                                <td>
+                                    <select class="form-select form-select-sm return-condition-select" data-barcode="${item.barcode}">
+                                        <option value="New">Mới</option>
+                                        <option value="Good">Tốt</option>
+                                        <option value="Worn">Cũ</option>
+                                        <option value="Damaged">Hư hỏng</option>
+                                        <option value="Lost">Thất lạc</option>
+                                    </select>
+                                </td>
+                                <td class="text-end">
+                                    <input type="checkbox" class="form-check-input return-item-check" data-barcode="${item.barcode}" />
+                                </td>
+                            </tr>
+                        `).join('');
+
+                        returnSelectedButton.onclick = () => {
+                            const checks = Array.from(body.querySelectorAll('.return-item-check'));
+                            const selected = checks
+                                .filter(x => x instanceof HTMLInputElement && x.checked)
+                                .map(x => (x instanceof HTMLInputElement ? x.getAttribute('data-barcode') || '' : ''))
+                                .filter(x => x);
+
+                            if (selected.length === 0) {
+                                returnSelectionError.textContent = 'Vui lòng chọn ít nhất 1 cuốn sách để trả.';
+                                return;
+                            }
+
+                            const conditions = selected.map(barcode => {
+                                const select = body.querySelector(`.return-condition-select[data-barcode="${barcode}"]`);
+                                return select instanceof HTMLSelectElement ? select.value : 'Good';
+                            });
+
+                            hiddenBarcodes.value = selected.join(',');
+                            hiddenConditionAfters.value = conditions.join(',');
+                            returnForm.submit();
+                        };
+
+                        body.querySelectorAll('.return-item-check').forEach(input => {
+                            input.addEventListener('change', () => {
+                                returnSelectionError.textContent = '';
+                            });
+                        });
+                    } catch {
+                        body.innerHTML = '';
+                        alertBox.textContent = 'Không thể tải danh sách sách đang mượn.';
+                        alertBox.style.display = '';
+                    }
+                });
+            }
+
+            if (renewModal) {
+                renewModal.addEventListener('show.bs.modal', event => {
+                    const trigger = event.relatedTarget;
+                    if (!(trigger instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const loanIdInput = document.getElementById('renewLoanId');
+                    const newDueDateInput = document.getElementById('renewNewDueDate');
+                    if (!(loanIdInput instanceof HTMLInputElement) || !(newDueDateInput instanceof HTMLInputElement)) {
+                        return;
+                    }
+
+                    if (trigger.dataset.loanId) {
+                        loanIdInput.value = trigger.dataset.loanId;
+                    }
+
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const currentDueDate = parseDateOnly(trigger.dataset.dueDate || '');
+                    let suggested = new Date(tomorrow);
+
+                    if (currentDueDate) {
+                        const nextAfterDue = new Date(currentDueDate);
+                        nextAfterDue.setDate(nextAfterDue.getDate() + 1);
+                        if (nextAfterDue > suggested) {
+                            suggested = nextAfterDue;
+                        }
+                    }
+
+                    const formatted = formatDateLocal(suggested);
+                    newDueDateInput.min = formatted;
+                    newDueDateInput.value = formatted;
+                });
+            }
+        })();
+
+
+
+
+
+
+    </script>
+}
+
+
+
+
+
+
+
+
+
+
