@@ -1,0 +1,54 @@
+@model Client_web.Models.ViewModels.LoanDetailVm
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <title>Phiếu mượn trả sách #@Model.LoanId</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { margin: 0 0 8px 0; }
+        .meta { margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #444; padding: 6px; font-size: 12px; }
+        th { background: #f3f3f3; }
+    </style>
+</head>
+<body>
+    <h2>Phiếu mượn/trả sách #@Model.LoanId</h2>
+    <div class="meta">
+        <div>Thành viên: @Model.Member</div>
+        <div>Trạng thái: @Model.Status</div>
+        <div>Ghi chú: @Model.Note</div>
+        <div>In lúc: @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Tên sách</th>
+                <th>Mã vạch</th>
+                <th>Trạng thái bản sao</th>
+                <th>Tình trạng</th>
+                <th>Đã trả lúc</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr>
+                    <td>@item.Title</td>
+                    <td>@item.Barcode</td>
+                    <td>@item.CopyStatus</td>
+                    <td>@item.PhysicalCondition</td>
+                    <td>@(string.IsNullOrWhiteSpace(item.ReturnedAt) ? "-" : item.ReturnedAt)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <script>window.print();</script>
+</body>
+</html>
