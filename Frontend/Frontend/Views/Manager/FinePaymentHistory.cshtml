@@ -1,0 +1,339 @@
+@model List<Client_web.Models.ViewModels.FinePaymentHistoryVm>
+@{
+    ViewData["Title"] = "Lịch sử thu phạt";
+    var memberKeyword = ViewBag.MemberKeyword as string ?? string.Empty;
+    var receivedByKeyword = ViewBag.ReceivedByKeyword as string ?? string.Empty;
+    var fromDate = ViewBag.FromDate as string ?? string.Empty;
+    var toDate = ViewBag.ToDate as string ?? string.Empty;
+    var page = ViewBag.Page is int p ? p : 1;
+    var totalPages = ViewBag.TotalPages is int tp ? tp : 1;
+    var totalCount = ViewBag.TotalCount is int tc ? tc : Model.Count;
+    var pageSize = ViewBag.PageSize is int ps ? ps : 10;
+    var isManager = ViewBag.IsManager is bool im && im;
+    var isStaff = ViewBag.IsStaff is bool ist && ist;
+    var currentUsername = ViewBag.CurrentUsername as string ?? string.Empty;
+}
+
+@if (isManager)
+{
+    <div class="manager-shell">
+        <partial name="~/Views/Shared/_ManagerSidebar.cshtml" />
+
+        <section class="manager-content">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="mb-0">Lịch sử thu tiền phạt</h3>
+                <a asp-action="ExportFinePaymentHistoryExcel"
+                   asp-route-memberKeyword="@memberKeyword"
+                   asp-route-receivedByKeyword="@receivedByKeyword"
+                   asp-route-fromDate="@fromDate"
+                   asp-route-toDate="@toDate"
+                   class="btn btn-outline-primary">
+                    Xuất Excel
+                </a>
+            </div>
+
+            <partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+            @if (ViewBag.Error != null)
+            {
+                <div class="alert alert-danger">@ViewBag.Error</div>
+            }
+
+            <div class="table-wrap mb-3">
+                <form method="get" asp-action="FinePaymentHistory" class="row g-2 align-items-end" id="finePaymentFilterForm">
+                    <input type="hidden" name="page" value="1" />
+                    <div class="col-lg-3">
+                        <label class="form-label" for="memberKeyword">Thành viên</label>
+                        <input id="memberKeyword" name="memberKeyword" value="@memberKeyword" class="form-control" placeholder="Mã hoặc tên thành viên" />
+                    </div>
+                    <div class="col-lg-3">
+                        <label class="form-label" for="receivedByKeyword">Nhân viên thu</label>
+                        <input id="receivedByKeyword" name="receivedByKeyword" value="@receivedByKeyword" class="form-control" placeholder="Username hoặc họ tên" />
+                    </div>
+                    <div class="col-lg-2">
+                        <label class="form-label" for="fromDate">Từ ngày</label>
+                        <input id="fromDate" type="date" name="fromDate" value="@fromDate" class="form-control" />
+                    </div>
+                    <div class="col-lg-2">
+                        <label class="form-label" for="toDate">Đến ngày</label>
+                        <input id="toDate" type="date" name="toDate" value="@toDate" class="form-control" />
+                    </div>
+                    <div class="col-lg-2 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary w-100">Lọc</button>
+                        <a asp-action="FinePaymentHistory" class="btn btn-filter-reset w-100">Xóa</a>
+                    </div>
+                    <div class="col-lg-2">
+                        <label class="form-label" for="finePaymentPageSize">Dòng/trang</label>
+                        <select id="finePaymentPageSize" class="form-select">
+                            <option value="5" selected>5</option>
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+
+            <div class="table-wrap">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="small text-muted">Tổng bản ghi: @totalCount</div>
+                </div>
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Thời gian</th>
+                            <th>Thành viên</th>
+                            <th>Phiếu mượn</th>
+                            <th>Số tiền</th>
+                            <th>Hình thức</th>
+                            <th>Nhân viên thu</th>
+                            <th>Ghi chú</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="8" class="text-muted">Không có dữ liệu thu phạt theo bộ lọc.</td>
+                            </tr>
+                        }
+                        @foreach (var item in Model)
+                        {
+                            <tr data-paginate="fine-payment">
+                                <td>@item.PaymentId</td>
+                                <td>@item.PaymentDate.ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@item.MemberCode - @item.MemberName</td>
+                                <td>@(item.LoanId.HasValue ? $"#{item.LoanId.Value}" : "-")</td>
+                                <td class="fw-semibold">@item.AmountPaid.ToString("N0") đ</td>
+                                <td>@item.PaymentMethod</td>
+                                <td>@(string.IsNullOrWhiteSpace(item.ReceivedByUsername) ? "-" : $"{item.ReceivedByUsername} ({item.ReceivedByName})")</td>
+                                <td>@item.Note</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div class="catalog-footer mt-3">
+                    <div class="catalog-pager" id="finePaymentPager"></div>
+                    <div class="catalog-page-size">
+                        <span class="catalog-page-size-text" id="finePaymentPageInfo"></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">Lịch sử thu tiền phạt</h3>
+        <a asp-action="ExportFinePaymentHistoryExcel"
+           asp-route-memberKeyword="@memberKeyword"
+           asp-route-receivedByKeyword="@receivedByKeyword"
+           asp-route-fromDate="@fromDate"
+           asp-route-toDate="@toDate"
+           class="btn btn-outline-primary">
+            Xuất Excel
+        </a>
+    </div>
+
+    <partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+    @if (ViewBag.Error != null)
+    {
+        <div class="alert alert-danger">@ViewBag.Error</div>
+    }
+
+    @if (isStaff)
+    {
+        <div class="d-flex justify-content-end mb-3">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#collectFineModal">Thêm thu tiền phạt</button>
+        </div>
+
+        <div class="modal fade" id="collectFineModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form asp-action="CollectFine" asp-controller="Home" method="post">
+                        @Html.AntiForgeryToken()
+                        <div class="modal-header">
+                            <h5 class="modal-title">Thu tiền phạt</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Mã thành viên</label>
+                                <input name="memberCode" class="form-control" placeholder="Ví dụ: MEM001" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Mã phiếu mượn</label>
+                                <input name="loanId" type="number" min="1" class="form-control" placeholder="Tùy chọn" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Số tiền</label>
+                                <input name="amountPaid" type="number" min="1000" step="1000" class="form-control" required />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Hình thức</label>
+                                <select name="paymentMethod" class="form-select">
+                                    <option value="cash">Tiền mặt</option>
+                                    <option value="bank">Chuyển khoản</option>
+                                    <option value="card">Thẻ</option>
+                                </select>
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label">Ghi chú</label>
+                                <input name="note" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                            <button type="submit" class="btn btn-primary">Xác nhận thu</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="table-wrap mb-3">
+    <form method="get" asp-action="FinePaymentHistory" class="row g-2 align-items-end" id="finePaymentFilterForm">
+        <input type="hidden" name="page" value="1" />
+        <div class="col-lg-3">
+            <label class="form-label" for="memberKeyword">Thành viên</label>
+            <input id="memberKeyword" name="memberKeyword" value="@memberKeyword" class="form-control" placeholder="Mã hoặc tên thành viên" />
+        </div>
+        <div class="col-lg-3">
+            <label class="form-label" for="receivedByKeyword">Nhân viên thu</label>
+            @if (isManager)
+            {
+                <input id="receivedByKeyword" name="receivedByKeyword" value="@receivedByKeyword" class="form-control" placeholder="Username hoặc họ tên" />
+            }
+            else
+            {
+                <input id="receivedByKeyword" name="receivedByKeyword" value="@receivedByKeyword" class="form-control" readonly />
+            }
+        </div>
+        <div class="col-lg-2">
+            <label class="form-label" for="fromDate">Từ ngày</label>
+            <input id="fromDate" type="date" name="fromDate" value="@fromDate" class="form-control" />
+        </div>
+        <div class="col-lg-2">
+            <label class="form-label" for="toDate">Đến ngày</label>
+            <input id="toDate" type="date" name="toDate" value="@toDate" class="form-control" />
+        </div>
+        <div class="col-lg-2 d-flex gap-2">
+            <button type="submit" class="btn btn-primary w-100">Lọc</button>
+            <a asp-action="FinePaymentHistory" class="btn btn-filter-reset w-100">Xóa</a>
+        </div>
+        <div class="col-lg-2">
+            <label class="form-label" for="finePaymentPageSize">Dòng/trang</label>
+            <select id="finePaymentPageSize" class="form-select">
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+            </select>
+        </div>
+    </form>
+    </div>
+
+    <div class="table-wrap">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small text-muted">Tổng bản ghi: @totalCount</div>
+    </div>
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Thời gian</th>
+                <th>Thành viên</th>
+                <th>Phiếu mượn</th>
+                <th>Số tiền</th>
+                <th>Hình thức</th>
+                <th>Nhân viên thu</th>
+                <th>Ghi chú</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Count == 0)
+            {
+                <tr>
+                    <td colspan="8" class="text-muted">Không có dữ liệu thu phạt theo bộ lọc.</td>
+                </tr>
+            }
+            @foreach (var item in Model)
+            {
+                <tr data-paginate="fine-payment">
+                    <td>@item.PaymentId</td>
+                    <td>@item.PaymentDate.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@item.MemberCode - @item.MemberName</td>
+                    <td>@(item.LoanId.HasValue ? $"#{item.LoanId.Value}" : "-")</td>
+                    <td class="fw-semibold">@item.AmountPaid.ToString("N0") đ</td>
+                    <td>@item.PaymentMethod</td>
+                    <td>@(string.IsNullOrWhiteSpace(item.ReceivedByUsername) ? "-" : $"{item.ReceivedByUsername} ({item.ReceivedByName})")</td>
+                    <td>@item.Note</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="catalog-footer mt-3">
+        <div class="catalog-pager" id="finePaymentPager"></div>
+        <div class="catalog-page-size">
+            <span class="catalog-page-size-text" id="finePaymentPageInfo"></span>
+        </div>
+    </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const rows = Array.from(document.querySelectorAll('tr[data-paginate="fine-payment"]'));
+            const pager = document.getElementById('finePaymentPager');
+            const pageSizeSelect = document.getElementById('finePaymentPageSize');
+            const pageInfo = document.getElementById('finePaymentPageInfo');
+            if (!rows.length || !(pager instanceof HTMLElement) || !(pageSizeSelect instanceof HTMLSelectElement)) {
+                if (pageInfo instanceof HTMLElement) {
+                    pageInfo.textContent = 'Số dòng/trang: 5';
+                }
+                return;
+            }
+
+            let currentPage = 1;
+            let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+
+            const render = () => {
+                rows.forEach(r => r.style.display = 'none');
+                const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+
+                const start = (currentPage - 1) * pageSize;
+                rows.slice(start, start + pageSize).forEach(r => r.style.display = '');
+
+                window.renderPagination({
+                    pager,
+                    totalPages,
+                    currentPage,
+                    onPageChange: page => {
+                        currentPage = page;
+                        render();
+                    }
+                });
+
+                if (pageInfo instanceof HTMLElement) {
+                    pageInfo.textContent = `Trang ${currentPage}/${totalPages} - Số dòng/trang: ${pageSize}`;
+                }
+            };
+
+            pageSizeSelect.addEventListener('change', () => {
+                pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                currentPage = 1;
+                render();
+            });
+
+            render();
+        })();
+    </script>
+}
