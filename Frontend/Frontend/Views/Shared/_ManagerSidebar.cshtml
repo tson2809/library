@@ -1,0 +1,35 @@
+@{
+    var controller = (ViewContext.RouteData.Values["controller"]?.ToString() ?? string.Empty).ToLowerInvariant();
+    var action = (ViewContext.RouteData.Values["action"]?.ToString() ?? string.Empty).ToLowerInvariant();
+
+    string active(string targetController, string? targetAction = null)
+    {
+        var matchController = string.Equals(controller, targetController, StringComparison.OrdinalIgnoreCase);
+        if (!matchController)
+        {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(targetAction))
+        {
+            return "active";
+        }
+
+        return string.Equals(action, targetAction, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
+    }
+}
+
+<aside class="manager-sidebar card">
+    <div class="card-body">
+        <h5 class="manager-sidebar-title">Quản lý</h5>
+        <nav class="manager-sidebar-nav">
+            <a class="manager-sidebar-link @active("home", "dashboard")" asp-controller="Home" asp-action="Dashboard">Tổng quan</a>
+            <a class="manager-sidebar-link @active("manager", "index")" asp-controller="Manager" asp-action="Index">Nhân viên</a>
+            <a class="manager-sidebar-link @active("manager", "finepaymenthistory")" asp-controller="Manager" asp-action="FinePaymentHistory">Lịch sử thu phạt</a>
+            <a class="manager-sidebar-link @active("operations", "reports")" asp-controller="Operations" asp-action="Reports">Báo cáo</a>
+            <a class="manager-sidebar-link @active("operations", "overdueloans")" asp-controller="Operations" asp-action="OverdueLoans">Sách quá hạn</a>
+            <a class="manager-sidebar-link @active("operations", "systemlogs")" asp-controller="Operations" asp-action="SystemLogs">Nhật ký hệ thống</a>
+            <a class="manager-sidebar-link @active("categories", "index")" asp-controller="Categories" asp-action="Index">Thể loại</a>
+        </nav>
+    </div>
+</aside>

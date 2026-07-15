@@ -1,0 +1,819 @@
+﻿@model List<Client_web.Models.ViewModels.ManagerUserVm>
+@{
+    ViewData["Title"] = "Nhân viên";
+    var currentUsername = Context.Session.GetString("Auth.Username") ?? string.Empty;
+    var createError = TempData["CreateEmployeeError"] as string ?? string.Empty;
+    var createUsername = TempData["CreateEmployeeUsername"] as string ?? string.Empty;
+    var createFullName = TempData["CreateEmployeeFullName"] as string ?? string.Empty;
+    var createEmail = TempData["CreateEmployeeEmail"] as string ?? string.Empty;
+    var createPhone = TempData["CreateEmployeePhone"] as string ?? string.Empty;
+    var createRole = TempData["CreateEmployeeRole"] as string ?? "staff";
+    var editError = TempData["EditEmployeeError"] as string ?? string.Empty;
+    var editUserId = TempData["EditEmployeeUserId"]?.ToString() ?? string.Empty;
+    var editFullName = TempData["EditEmployeeFullName"] as string ?? string.Empty;
+    var editEmail = TempData["EditEmployeeEmail"] as string ?? string.Empty;
+    var editPhone = TempData["EditEmployeePhone"] as string ?? string.Empty;
+    var editRole = TempData["EditEmployeeRole"] as string ?? "staff";
+    var editActive = TempData["EditEmployeeActive"]?.ToString()?.ToLowerInvariant() ?? "true";
+}
+
+<div class="manager-shell">
+    <partial name="~/Views/Shared/_ManagerSidebar.cshtml" />
+
+    <section class="manager-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="mb-0">Danh sách nhân sự</h3>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createEmployeeModal">Tạo tài khoản</button>
+        </div>
+
+    <input type="hidden" id="editEmployeeTempUserId" value="@editUserId" />
+    <input type="hidden" id="editEmployeeTempFullName" value="@editFullName" />
+    <input type="hidden" id="editEmployeeTempEmail" value="@editEmail" />
+    <input type="hidden" id="editEmployeeTempPhone" value="@editPhone" />
+    <input type="hidden" id="editEmployeeTempRole" value="@editRole" />
+    <input type="hidden" id="editEmployeeTempActive" value="@editActive" />
+    <input type="hidden" id="currentActorUsername" value="@currentUsername" />
+
+        @if (TempData["Success"] != null)
+        {
+            <div class="alert alert-success">@TempData["Success"]</div>
+        }
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger">@ViewBag.Error</div>
+        }
+
+    <div class="table-wrap mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col-lg-5">
+            <input id="employeeSearchInput" class="form-control" placeholder="Tìm theo username, họ tên, email, điện thoại" />
+        </div>
+        <div class="col-lg-3">
+            <select id="employeeRoleFilter" class="form-select">
+                <option value="all">Tất cả vai trò</option>
+                <option value="staff">Nhân viên</option>
+                <option value="manager">Quản lý</option>
+            </select>
+        </div>
+        <div class="col-lg-2">
+            <select id="employeeStatusFilter" class="form-select">
+                <option value="all">Tất cả trạng thái</option>
+                <option value="true">Hoạt động</option>
+                <option value="false">Ngừng hoạt động</option>
+            </select>
+        </div>
+        <div class="col-lg-2 d-flex justify-content-lg-end gap-2">
+            <button type="button" id="resetEmployeeFilter" class="btn btn-filter-reset">Xóa bộ lọc</button>
+        </div>
+    </div>
+    </div>
+
+    <div class="table-wrap">
+    <table class="table table-striped align-middle" id="employeesTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Tên đăng nhập</th>
+                <th>Họ tên</th>
+                <th>Email</th>
+                <th>Điện thoại</th>
+                <th>Vai trò</th>
+                <th>Trạng thái</th>
+                <th class="text-end">Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Count == 0)
+            {
+                <tr>
+                    <td colspan="8" class="text-muted">Chưa có nhân viên.</td>
+                </tr>
+            }
+            @foreach (var item in Model)
+            {
+                var search = string.Join(" ", new[] { item.Username, item.FullName, item.Email ?? string.Empty, item.Phone ?? string.Empty }).ToLowerInvariant();
+                <tr data-search="@search" data-role="@(item.RoleName?.ToLowerInvariant())" data-status="@item.IsActive.ToString().ToLowerInvariant()" data-username="@item.Username">
+                    <td>@item.UserId</td>
+                    <td>@item.Username</td>
+                    <td>@item.FullName</td>
+                    <td>@item.Email</td>
+                    <td>@item.Phone</td>
+                    <td>@item.Role</td>
+                    <td>@(item.IsActive ? "Hoạt động" : "Ngừng hoạt động")</td>
+                    <td class="text-end">
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-primary btn-edit-employee"
+                            data-bs-toggle="modal"
+                            data-bs-target="#editEmployeeModal"
+                            data-user-id="@item.UserId"
+                            data-full-name="@item.FullName"
+                            data-email="@item.Email"
+                            data-phone="@item.Phone"
+                            data-role="@item.RoleName"
+                            data-username="@item.Username"
+                            data-active="@item.IsActive.ToString().ToLowerInvariant()">
+                            Sửa
+                        </button>
+                    </td>
+                </tr>
+            }
+            <tr id="employeeNoResultRow" style="display:none;">
+                <td colspan="8" class="text-muted">Không có nhân viên phù hợp bộ lọc.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="catalog-footer mt-3">
+        <div class="catalog-pager" id="employeePager"></div>
+        <div class="catalog-page-size">
+            <label for="employeePageSize" class="form-label mb-0">Hiển thị</label>
+            <select id="employeePageSize" class="form-select form-select-sm">
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
+            </select>
+        </div>
+    </div>
+        </div>
+    </section>
+</div>
+
+<div class="modal fade" id="createEmployeeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="CreateUser" method="post" id="createEmployeeForm" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo tài khoản</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="createEmployeeServerError" value="@createError" />
+                    <div class="mb-3">
+                        <label class="form-label" for="createUsername">Tên đăng nhập</label>
+                        <input id="createUsername" class="form-control" name="username" value="@createUsername" required />
+                        <div class="invalid-feedback" id="createUsernameError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="createFullName">Họ tên</label>
+                        <input id="createFullName" class="form-control" name="fullName" value="@createFullName" required />
+                        <div class="invalid-feedback" id="createFullNameError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="createEmail">Email</label>
+                        <input id="createEmail" class="form-control" type="email" name="email" value="@createEmail" />
+                        <div class="invalid-feedback" id="createEmailError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="createPhone">Điện thoại</label>
+                        <input id="createPhone" class="form-control" name="phone" value="@createPhone" />
+                        <div class="invalid-feedback" id="createPhoneError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="createRole">Vai trò</label>
+                        <select id="createRole" class="form-select" name="roleName">
+                            @if (string.Equals(createRole, "manager", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="staff">Nhân viên</option>
+                                <option value="manager" selected>Quản lý</option>
+                            }
+                            else
+                            {
+                                <option value="staff" selected>Nhân viên</option>
+                                <option value="manager">Quản lý</option>
+                            }
+                        </select>
+                        <div class="invalid-feedback" id="createRoleError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="createPassword">Mật khẩu</label>
+                        <input id="createPassword" class="form-control" type="password" name="password" minlength="6" required />
+                        <div class="invalid-feedback" id="createPasswordError"></div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label" for="createConfirmPassword">Xác nhận mật khẩu</label>
+                        <input id="createConfirmPassword" class="form-control" type="password" name="confirmPassword" minlength="6" required />
+                        <div class="invalid-feedback" id="createConfirmPasswordError"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Tạo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editEmployeeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form asp-action="SaveEmployee" method="post" id="editEmployeeForm" novalidate>
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Sửa tài khoản</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editEmployeeServerError" value="@editError" />
+                    <input type="hidden" id="editUserId" name="userId" />
+                    <div class="mb-3">
+                        <label class="form-label" for="editFullName">Họ tên</label>
+                        <input id="editFullName" class="form-control" name="fullName" required />
+                        <div class="invalid-feedback" id="editFullNameError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="editEmail">Email</label>
+                        <input id="editEmail" class="form-control" type="email" name="email" />
+                        <div class="invalid-feedback" id="editEmailError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="editPhone">Điện thoại</label>
+                        <input id="editPhone" class="form-control" name="phone" />
+                        <div class="invalid-feedback" id="editPhoneError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="editRole">Vai trò</label>
+                        <select id="editRole" class="form-select" name="roleName">
+                            <option value="staff">Nhân viên</option>
+                            <option value="manager">Quản lý</option>
+                        </select>
+                        <div class="invalid-feedback" id="editRoleError"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="editActive">Trạng thái</label>
+                        <select id="editActive" class="form-select" name="isActive">
+                            <option value="true">Hoạt động</option>
+                            <option value="false">Ngừng hoạt động</option>
+                        </select>
+                    </div>
+                    <hr />
+                    <div class="mb-3">
+                        <label class="form-label" for="editNewPassword">Mật khẩu mới</label>
+                        <input id="editNewPassword" class="form-control" type="password" name="newPassword" minlength="6" />
+                        <div class="invalid-feedback" id="editNewPasswordError"></div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label" for="editConfirmNewPassword">Xác nhận mật khẩu mới</label>
+                        <input id="editConfirmNewPassword" class="form-control" type="password" name="confirmNewPassword" minlength="6" />
+                        <div class="invalid-feedback" id="editConfirmNewPasswordError"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const table = document.getElementById('employeesTable');
+            const searchInput = document.getElementById('employeeSearchInput');
+            const roleFilter = document.getElementById('employeeRoleFilter');
+            const statusFilter = document.getElementById('employeeStatusFilter');
+            const resetButton = document.getElementById('resetEmployeeFilter');
+            const pager = document.getElementById('employeePager');
+            const pageSizeSelect = document.getElementById('employeePageSize');
+            const noResultRow = document.getElementById('employeeNoResultRow');
+            const editModal = document.getElementById('editEmployeeModal');
+            const createModalElement = document.getElementById('createEmployeeModal');
+            const createForm = document.getElementById('createEmployeeForm');
+            const editForm = document.getElementById('editEmployeeForm');
+            const currentActorUsername = document.getElementById('currentActorUsername');
+
+            const phoneRegex = /^0\d{9}$/;
+            const emailRegex = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/;
+
+            const setFieldError = (input, errorElement, message) => {
+                if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLSelectElement)) {
+                    return;
+                }
+
+                if (!(errorElement instanceof HTMLElement)) {
+                    return;
+                }
+
+                if (message) {
+                    input.classList.add('is-invalid');
+                    errorElement.textContent = message;
+                    return;
+                }
+
+                input.classList.remove('is-invalid');
+                errorElement.textContent = '';
+            };
+
+            if (!table || !pager || !(searchInput instanceof HTMLInputElement) || !(roleFilter instanceof HTMLSelectElement) || !(statusFilter instanceof HTMLSelectElement) || !(resetButton instanceof HTMLButtonElement) || !(pageSizeSelect instanceof HTMLSelectElement)) {
+                return;
+            }
+
+            const rows = Array.from(table.querySelectorAll('tbody tr[data-search]'));
+
+            const getEmployeeContacts = () => {
+                return rows.map(row => {
+                    const cells = row.querySelectorAll('td');
+                    const userId = Number.parseInt((cells[0]?.textContent || '0').trim(), 10);
+                    const username = (cells[1]?.textContent || '').trim().toLowerCase();
+                    const email = (cells[3]?.textContent || '').trim().toLowerCase();
+                    const phone = (cells[4]?.textContent || '').trim();
+                    return { userId, username, email, phone };
+                });
+            };
+
+            let keyword = '';
+            let role = 'all';
+            let status = 'all';
+            let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+            let currentPage = 1;
+
+            const normalizeSearch = window.normalizeSearchText;
+
+            const render = () => {
+                const filtered = rows.filter(row => {
+                    const rowSearch = normalizeSearch(row.getAttribute('data-search') || '');
+                    const rowRole = (row.getAttribute('data-role') || '').toLowerCase();
+                    const rowStatus = (row.getAttribute('data-status') || '').toLowerCase();
+                    return (!keyword || rowSearch.includes(keyword))
+                        && (role === 'all' || rowRole === role)
+                        && (status === 'all' || rowStatus === status);
+                });
+
+                const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+
+                rows.forEach(row => row.style.display = 'none');
+                const start = (currentPage - 1) * pageSize;
+                filtered.slice(start, start + pageSize).forEach(row => row.style.display = '');
+
+                if (noResultRow) {
+                    noResultRow.style.display = filtered.length === 0 ? '' : 'none';
+                }
+
+                window.renderPagination({
+                    pager,
+                    totalPages,
+                    currentPage,
+                    showPrevNext: false,
+                    onPageChange: page => {
+                        currentPage = page;
+                        render();
+                    }
+                });
+            };
+
+            const applyFilter = () => {
+                keyword = normalizeSearch(searchInput.value);
+                role = roleFilter.value.toLowerCase();
+                status = statusFilter.value.toLowerCase();
+                currentPage = 1;
+                render();
+            };
+
+            searchInput.addEventListener('input', applyFilter);
+            roleFilter.addEventListener('change', applyFilter);
+            statusFilter.addEventListener('change', applyFilter);
+            pageSizeSelect.addEventListener('change', () => {
+                pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                currentPage = 1;
+                render();
+            });
+            resetButton.addEventListener('click', () => {
+                searchInput.value = '';
+                roleFilter.value = 'all';
+                statusFilter.value = 'all';
+                applyFilter();
+            });
+
+            if (createModalElement) {
+                createModalElement.addEventListener('show.bs.modal', event => {
+                    if (createForm instanceof HTMLFormElement) {
+                        createForm.reset();
+                    }
+
+                    ['createUsername', 'createFullName', 'createEmail', 'createPhone', 'createRole', 'createPassword', 'createConfirmPassword']
+                        .forEach(id => {
+                            const field = document.getElementById(id);
+                            if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) {
+                                field.classList.remove('is-invalid');
+                            }
+                        });
+
+                    ['createUsernameError', 'createFullNameError', 'createEmailError', 'createPhoneError', 'createRoleError', 'createPasswordError', 'createConfirmPasswordError']
+                        .forEach(id => {
+                            const error = document.getElementById(id);
+                            if (error instanceof HTMLElement) {
+                                error.textContent = '';
+                            }
+                        });
+                });
+            }
+
+            if (editModal) {
+                editModal.addEventListener('show.bs.modal', event => {
+                    console.log('Edit modal show event triggered');
+                    const trigger = event.relatedTarget;
+                    console.log('Trigger:', trigger);
+                    console.log('Trigger dataset:', trigger?.dataset);
+
+                    if (!(trigger instanceof HTMLElement)) {
+                        console.log('Trigger is not HTMLElement');
+                        return;
+                    }
+
+                    const userIdInput = document.getElementById('editUserId');
+                    const fullNameInput = document.getElementById('editFullName');
+                    const emailInput = document.getElementById('editEmail');
+                    const phoneInput = document.getElementById('editPhone');
+                    const roleInput = document.getElementById('editRole');
+                    const activeInput = document.getElementById('editActive');
+                    const passwordInput = document.getElementById('editNewPassword');
+                    const confirmInput = document.getElementById('editConfirmNewPassword');
+
+                    console.log('Input elements:', {
+                        userIdInput: !!userIdInput,
+                        fullNameInput: !!fullNameInput,
+                        emailInput: !!emailInput,
+                        phoneInput: !!phoneInput,
+                        roleInput: !!roleInput,
+                        activeInput: !!activeInput,
+                        passwordInput: !!passwordInput,
+                        confirmInput: !!confirmInput
+                    });
+
+                    if (!(userIdInput instanceof HTMLInputElement) ||
+                        !(fullNameInput instanceof HTMLInputElement) ||
+                        !(emailInput instanceof HTMLInputElement) ||
+                        !(phoneInput instanceof HTMLInputElement) ||
+                        !(roleInput instanceof HTMLSelectElement) ||
+                        !(activeInput instanceof HTMLSelectElement) ||
+                        !(passwordInput instanceof HTMLInputElement) ||
+                        !(confirmInput instanceof HTMLInputElement)) {
+                        console.log('Some input elements are wrong type');
+                        return;
+                    }
+
+                    console.log('Setting values:', {
+                        userId: trigger.dataset.userId,
+                        fullName: trigger.dataset.fullName,
+                        email: trigger.dataset.email,
+                        phone: trigger.dataset.phone,
+                        role: trigger.dataset.role,
+                        active: trigger.dataset.active,
+                        username: trigger.dataset.username
+                    });
+
+                    userIdInput.value = trigger.dataset.userId || '';
+                    fullNameInput.value = trigger.dataset.fullName || '';
+                    emailInput.value = trigger.dataset.email || '';
+                    phoneInput.value = trigger.dataset.phone || '';
+                    roleInput.value = trigger.dataset.role || 'staff';
+                    activeInput.value = trigger.dataset.active || 'true';
+                    passwordInput.value = '';
+                    confirmInput.value = '';
+
+                    const usernameInput = document.getElementById('editEmployeeUsername');
+                    const originalRoleInput = document.getElementById('editEmployeeOriginalRole');
+                    if (usernameInput instanceof HTMLInputElement) {
+                        usernameInput.value = trigger.dataset.username || '';
+                    }
+                    if (originalRoleInput instanceof HTMLInputElement) {
+                        originalRoleInput.value = trigger.dataset.role || 'staff';
+                    }
+
+                    console.log('Form values set');
+
+                    ['editFullName', 'editEmail', 'editPhone', 'editRole', 'editNewPassword', 'editConfirmNewPassword']
+                        .forEach(id => {
+                            const field = document.getElementById(id);
+                            if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) {
+                                field.classList.remove('is-invalid');
+                            }
+                        });
+
+                    ['editFullNameError', 'editEmailError', 'editPhoneError', 'editRoleError', 'editNewPasswordError', 'editConfirmNewPasswordError']
+                        .forEach(id => {
+                            const error = document.getElementById(id);
+                            if (error instanceof HTMLElement) {
+                                error.textContent = '';
+                            }
+                        });
+                });
+            }
+
+            if (createForm instanceof HTMLFormElement) {
+                createForm.addEventListener('submit', event => {
+                    const usernameInput = document.getElementById('createUsername');
+                    const fullNameInput = document.getElementById('createFullName');
+                    const emailInput = document.getElementById('createEmail');
+                    const phoneInput = document.getElementById('createPhone');
+                    const roleInput = document.getElementById('createRole');
+                    const passwordInput = document.getElementById('createPassword');
+                    const confirmInput = document.getElementById('createConfirmPassword');
+
+                    const usernameError = document.getElementById('createUsernameError');
+                    const fullNameError = document.getElementById('createFullNameError');
+                    const emailError = document.getElementById('createEmailError');
+                    const phoneError = document.getElementById('createPhoneError');
+                    const roleError = document.getElementById('createRoleError');
+                    const passwordError = document.getElementById('createPasswordError');
+                    const confirmError = document.getElementById('createConfirmPasswordError');
+
+                    const contacts = getEmployeeContacts();
+                    const usernameValue = usernameInput instanceof HTMLInputElement ? usernameInput.value.trim() : '';
+                    const fullNameValue = fullNameInput instanceof HTMLInputElement ? fullNameInput.value.trim() : '';
+                    const emailValue = emailInput instanceof HTMLInputElement ? emailInput.value.trim() : '';
+                    const phoneValue = phoneInput instanceof HTMLInputElement ? phoneInput.value.trim() : '';
+                    const roleValue = roleInput instanceof HTMLSelectElement ? roleInput.value : '';
+                    const passwordValue = passwordInput instanceof HTMLInputElement ? passwordInput.value : '';
+                    const confirmValue = confirmInput instanceof HTMLInputElement ? confirmInput.value : '';
+
+                    let valid = true;
+
+                    if (!usernameValue) {
+                        setFieldError(usernameInput, usernameError, 'Vui lòng nhập tên đăng nhập.');
+                        valid = false;
+                    } else if (contacts.some(x => x.username === usernameValue.toLowerCase())) {
+                        setFieldError(usernameInput, usernameError, 'Tên đăng nhập đã tồn tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(usernameInput, usernameError, '');
+                    }
+
+                    if (!fullNameValue) {
+                        setFieldError(fullNameInput, fullNameError, 'Vui lòng nhập họ tên.');
+                        valid = false;
+                    } else {
+                        setFieldError(fullNameInput, fullNameError, '');
+                    }
+
+                    if (emailValue && !emailRegex.test(emailValue)) {
+                        setFieldError(emailInput, emailError, 'Email không đúng định dạng.');
+                        valid = false;
+                    } else if (emailValue && contacts.some(x => x.email && x.email === emailValue.toLowerCase())) {
+                        setFieldError(emailInput, emailError, 'Email đã tồn tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(emailInput, emailError, '');
+                    }
+
+                    if (phoneValue && !phoneRegex.test(phoneValue)) {
+                        setFieldError(phoneInput, phoneError, 'Số điện thoại phải bắt đầu bằng số 0 và gồm đúng 10 chữ số.');
+                        valid = false;
+                    } else if (phoneValue && contacts.some(x => x.phone && x.phone === phoneValue)) {
+                        setFieldError(phoneInput, phoneError, 'Số điện thoại đã tồn tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(phoneInput, phoneError, '');
+                    }
+
+                    if (roleValue !== 'staff' && roleValue !== 'manager') {
+                        setFieldError(roleInput, roleError, 'Vai trò không hợp lệ.');
+                        valid = false;
+                    } else {
+                        setFieldError(roleInput, roleError, '');
+                    }
+
+                    if (!passwordValue) {
+                        setFieldError(passwordInput, passwordError, 'Vui lòng nhập mật khẩu.');
+                        valid = false;
+                    } else if (passwordValue.length < 6) {
+                        setFieldError(passwordInput, passwordError, 'Mật khẩu phải có ít nhất 6 ký tự.');
+                        valid = false;
+                    } else {
+                        setFieldError(passwordInput, passwordError, '');
+                    }
+
+                    if (!confirmValue) {
+                        setFieldError(confirmInput, confirmError, 'Vui lòng xác nhận mật khẩu.');
+                        valid = false;
+                    } else if (passwordValue !== confirmValue) {
+                        setFieldError(confirmInput, confirmError, 'Mật khẩu xác nhận không khớp.');
+                        valid = false;
+                    } else {
+                        setFieldError(confirmInput, confirmError, '');
+                    }
+
+                    if (!valid) {
+                        event.preventDefault();
+                    }
+                });
+            }
+
+            if (editForm instanceof HTMLFormElement) {
+                editForm.addEventListener('submit', event => {
+                    const userIdInput = document.getElementById('editUserId');
+                    const fullNameInput = document.getElementById('editFullName');
+                    const emailInput = document.getElementById('editEmail');
+                    const phoneInput = document.getElementById('editPhone');
+                    const roleInput = document.getElementById('editRole');
+                    const passwordInput = document.getElementById('editNewPassword');
+                    const confirmInput = document.getElementById('editConfirmNewPassword');
+
+                    const fullNameError = document.getElementById('editFullNameError');
+                    const emailError = document.getElementById('editEmailError');
+                    const phoneError = document.getElementById('editPhoneError');
+                    const roleError = document.getElementById('editRoleError');
+                    const passwordError = document.getElementById('editNewPasswordError');
+                    const confirmError = document.getElementById('editConfirmNewPasswordError');
+
+                    const currentUserId = userIdInput instanceof HTMLInputElement
+                        ? Number.parseInt(userIdInput.value || '0', 10)
+                        : 0;
+                    const contacts = getEmployeeContacts().filter(x => x.userId !== currentUserId);
+                    const fullNameValue = fullNameInput instanceof HTMLInputElement ? fullNameInput.value.trim() : '';
+                    const emailValue = emailInput instanceof HTMLInputElement ? emailInput.value.trim() : '';
+                    const phoneValue = phoneInput instanceof HTMLInputElement ? phoneInput.value.trim() : '';
+                    const roleValue = roleInput instanceof HTMLSelectElement ? roleInput.value : '';
+                    const passwordValue = passwordInput instanceof HTMLInputElement ? passwordInput.value : '';
+                    const confirmValue = confirmInput instanceof HTMLInputElement ? confirmInput.value : '';
+
+                    let valid = true;
+
+                    if (!fullNameValue) {
+                        setFieldError(fullNameInput, fullNameError, 'Vui lòng nhập họ tên.');
+                        valid = false;
+                    } else {
+                        setFieldError(fullNameInput, fullNameError, '');
+                    }
+
+                    if (emailValue && !emailRegex.test(emailValue)) {
+                        setFieldError(emailInput, emailError, 'Email không đúng định dạng.');
+                        valid = false;
+                    } else if (emailValue && contacts.some(x => x.email && x.email === emailValue.toLowerCase())) {
+                        setFieldError(emailInput, emailError, 'Email đã tồn tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(emailInput, emailError, '');
+                    }
+
+                    if (phoneValue && !phoneRegex.test(phoneValue)) {
+                        setFieldError(phoneInput, phoneError, 'Số điện thoại phải bắt đầu bằng số 0 và gồm đúng 10 chữ số.');
+                        valid = false;
+                    } else if (phoneValue && contacts.some(x => x.phone && x.phone === phoneValue)) {
+                        setFieldError(phoneInput, phoneError, 'Số điện thoại đã tồn tại.');
+                        valid = false;
+                    } else {
+                        setFieldError(phoneInput, phoneError, '');
+                    }
+
+                    if (roleValue !== 'staff' && roleValue !== 'manager') {
+                        setFieldError(roleInput, roleError, 'Vai trò không hợp lệ.');
+                        valid = false;
+                    } else {
+                        const actorUsername = currentActorUsername instanceof HTMLInputElement ? currentActorUsername.value.trim().toLowerCase() : '';
+                        const editingUsernameInput = document.getElementById('editEmployeeUsername');
+                        const editingOriginalRoleInput = document.getElementById('editEmployeeOriginalRole');
+                        const editingUsername = editingUsernameInput instanceof HTMLInputElement ? editingUsernameInput.value.trim().toLowerCase() : '';
+                        const editingOriginalRole = editingOriginalRoleInput instanceof HTMLInputElement ? editingOriginalRoleInput.value.trim().toLowerCase() : '';
+
+                        if (actorUsername && editingUsername && actorUsername === editingUsername && editingOriginalRole !== roleValue.toLowerCase()) {
+                            setFieldError(roleInput, roleError, 'Bạn không thể tự thay đổi vai trò của chính mình.');
+                            valid = false;
+                        } else {
+                            setFieldError(roleInput, roleError, '');
+                        }
+                    }
+
+                    if (!passwordValue && !confirmValue) {
+                        setFieldError(passwordInput, passwordError, '');
+                        setFieldError(confirmInput, confirmError, '');
+                    } else {
+                        if (!passwordValue) {
+                            setFieldError(passwordInput, passwordError, 'Vui lòng nhập mật khẩu mới.');
+                            valid = false;
+                        } else if (passwordValue.length < 6) {
+                            setFieldError(passwordInput, passwordError, 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+                            valid = false;
+                        } else {
+                            setFieldError(passwordInput, passwordError, '');
+                        }
+
+                        if (!confirmValue) {
+                            setFieldError(confirmInput, confirmError, 'Vui lòng xác nhận mật khẩu mới.');
+                            valid = false;
+                        } else if (passwordValue !== confirmValue) {
+                            setFieldError(confirmInput, confirmError, 'Mật khẩu xác nhận không khớp.');
+                            valid = false;
+                        } else {
+                            setFieldError(confirmInput, confirmError, '');
+                        }
+                    }
+
+                    if (!valid) {
+                        event.preventDefault();
+                    }
+                });
+            }
+
+            const createServerError = document.getElementById('createEmployeeServerError');
+            if (createModalElement && createServerError instanceof HTMLInputElement && createServerError.value) {
+                const createUsernameInput = document.getElementById('createUsername');
+                const createUsernameError = document.getElementById('createUsernameError');
+                const createFullNameInput = document.getElementById('createFullName');
+                const createFullNameError = document.getElementById('createFullNameError');
+                const createEmailInput = document.getElementById('createEmail');
+                const createEmailError = document.getElementById('createEmailError');
+                const createPhoneInput = document.getElementById('createPhone');
+                const createPhoneError = document.getElementById('createPhoneError');
+                const createRoleInput = document.getElementById('createRole');
+                const createRoleError = document.getElementById('createRoleError');
+                const createPasswordInput = document.getElementById('createPassword');
+                const createPasswordError = document.getElementById('createPasswordError');
+                const createConfirmInput = document.getElementById('createConfirmPassword');
+                const createConfirmError = document.getElementById('createConfirmPasswordError');
+
+                const lowerMessage = createServerError.value.toLowerCase();
+                if (lowerMessage.includes('tên đăng nhập')) {
+                    setFieldError(createUsernameInput, createUsernameError, createServerError.value);
+                } else if (lowerMessage.includes('h? tên')) {
+                    setFieldError(createFullNameInput, createFullNameError, createServerError.value);
+                } else if (lowerMessage.includes('email')) {
+                    setFieldError(createEmailInput, createEmailError, createServerError.value);
+                } else if (lowerMessage.includes('điện thoại') || lowerMessage.includes('10 chữ số')) {
+                    setFieldError(createPhoneInput, createPhoneError, createServerError.value);
+                } else if (lowerMessage.includes('vai trò')) {
+                    setFieldError(createRoleInput, createRoleError, createServerError.value);
+                } else if (lowerMessage.includes('mật khẩu')) {
+                    setFieldError(createPasswordInput, createPasswordError, createServerError.value);
+                    setFieldError(createConfirmInput, createConfirmError, createServerError.value);
+                } else {
+                    setFieldError(createUsernameInput, createUsernameError, createServerError.value);
+                }
+
+                const modal = bootstrap.Modal.getOrCreateInstance(createModalElement);
+                modal.show();
+            }
+
+            const editServerError = document.getElementById('editEmployeeServerError');
+            if (editModal && editServerError instanceof HTMLInputElement && editServerError.value) {
+                const setValue = (id, value) => {
+                    const element = document.getElementById(id);
+                    if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement) {
+                        element.value = value || '';
+                    }
+                };
+
+                const tempUserId = document.getElementById('editEmployeeTempUserId');
+                const tempFullName = document.getElementById('editEmployeeTempFullName');
+                const tempEmail = document.getElementById('editEmployeeTempEmail');
+                const tempPhone = document.getElementById('editEmployeeTempPhone');
+                const tempRole = document.getElementById('editEmployeeTempRole');
+                const tempActive = document.getElementById('editEmployeeTempActive');
+
+                setValue('editUserId', tempUserId instanceof HTMLInputElement ? tempUserId.value : '');
+                setValue('editFullName', tempFullName instanceof HTMLInputElement ? tempFullName.value : '');
+                setValue('editEmail', tempEmail instanceof HTMLInputElement ? tempEmail.value : '');
+                setValue('editPhone', tempPhone instanceof HTMLInputElement ? tempPhone.value : '');
+                setValue('editRole', tempRole instanceof HTMLInputElement ? tempRole.value : 'staff');
+                setValue('editActive', tempActive instanceof HTMLInputElement ? tempActive.value : 'true');
+
+                const editFullNameInput = document.getElementById('editFullName');
+                const editFullNameError = document.getElementById('editFullNameError');
+                const editEmailInput = document.getElementById('editEmail');
+                const editEmailError = document.getElementById('editEmailError');
+                const editPhoneInput = document.getElementById('editPhone');
+                const editPhoneError = document.getElementById('editPhoneError');
+                const editRoleInput = document.getElementById('editRole');
+                const editRoleError = document.getElementById('editRoleError');
+                const editPasswordInput = document.getElementById('editNewPassword');
+                const editPasswordError = document.getElementById('editNewPasswordError');
+                const editConfirmInput = document.getElementById('editConfirmNewPassword');
+                const editConfirmError = document.getElementById('editConfirmNewPasswordError');
+
+                const lowerMessage = editServerError.value.toLowerCase();
+                if (lowerMessage.includes('họ tên')) {
+                    setFieldError(editFullNameInput, editFullNameError, editServerError.value);
+                } else if (lowerMessage.includes('email')) {
+                    setFieldError(editEmailInput, editEmailError, editServerError.value);
+                } else if (lowerMessage.includes('điện thoại') || lowerMessage.includes('10 chữ số')) {
+                    setFieldError(editPhoneInput, editPhoneError, editServerError.value);
+                } else if (lowerMessage.includes('vai trò')) {
+                    setFieldError(editRoleInput, editRoleError, editServerError.value);
+                } else if (lowerMessage.includes('mật khẩu')) {
+                    setFieldError(editPasswordInput, editPasswordError, editServerError.value);
+                    setFieldError(editConfirmInput, editConfirmError, editServerError.value);
+                } else {
+                    setFieldError(editFullNameInput, editFullNameError, editServerError.value);
+                }
+
+                const modal = bootstrap.Modal.getOrCreateInstance(editModal);
+                modal.show();
+            }
+
+            render();
+        })();
+    </script>
+}
+
+
+
+
+
+
