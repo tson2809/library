@@ -1,0 +1,110 @@
+@model List<Client_web.Models.ViewModels.SystemLogVm>
+@{
+    ViewData["Title"] = "Nhật ký hệ thống";
+}
+
+<div class="manager-shell">
+    <partial name="~/Views/Shared/_ManagerSidebar.cshtml" />
+
+    <section class="manager-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="mb-0">Nhật ký hệ thống</h3>
+            <div class="d-flex gap-2">
+                <a asp-action="ExportSystemLogsExcel" class="btn btn-outline-primary">Xuất Excel</a>
+            </div>
+        </div>
+
+        <partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger">@ViewBag.Error</div>
+        }
+
+        <div class="table-wrap">
+            <table class="table table-striped align-middle mb-0" id="systemLogsTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Thời gian</th>
+                        <th>Người dùng</th>
+                        <th>Hành động</th>
+                        <th>Thực thể</th>
+                        <th>Mô tả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Count == 0)
+                    {
+                        <tr><td colspan="6" class="text-muted">Chưa có nhật ký.</td></tr>
+                    }
+                    else
+                    {
+                        foreach (var item in Model)
+                        {
+                            <tr data-paginate="logs">
+                                <td>@item.LogId</td>
+                                <td>@item.CreatedAt.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                <td>@(string.IsNullOrWhiteSpace(item.UserName) ? "-" : item.UserName)</td>
+                                <td>@item.ActionType</td>
+                                <td>@item.EntityName @item.EntityId</td>
+                                <td>@item.Description</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+
+            <div class="catalog-footer mt-3">
+                <div class="catalog-pager" id="logsPager"></div>
+                <div class="catalog-page-size">
+                    <label for="logsPageSize" class="form-label mb-0">Hiển thị</label>
+                    <select id="logsPageSize" class="form-select form-select-sm">
+                        <option value="10" selected>10</option>
+                        <option value="15">15</option>
+                        <option value="20">20</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const rows = Array.from(document.querySelectorAll('tr[data-paginate="logs"]'));
+            const pager = document.getElementById('logsPager');
+            const pageSizeSelect = document.getElementById('logsPageSize');
+            if (!rows.length || !(pager instanceof HTMLElement) || !(pageSizeSelect instanceof HTMLSelectElement)) return;
+
+            let currentPage = 1;
+            let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 10;
+
+            const render = () => {
+                rows.forEach(r => r.style.display = 'none');
+                const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+                if (currentPage > totalPages) currentPage = totalPages;
+                const start = (currentPage - 1) * pageSize;
+                rows.slice(start, start + pageSize).forEach(r => r.style.display = '');
+                window.renderPagination({
+                    pager,
+                    totalPages,
+                    currentPage,
+                    onPageChange: page => {
+                        currentPage = page;
+                        render();
+                    }
+                });
+            };
+
+            pageSizeSelect.addEventListener('change', () => {
+                pageSize = Number.parseInt(pageSizeSelect.value, 10) || 10;
+                currentPage = 1;
+                render();
+            });
+
+            render();
+        })();
+    </script>
+}
