@@ -1,0 +1,324 @@
+@model List<Client_web.Models.ViewModels.NotificationListItemVm>
+@using Client_web.Models.ViewModels
+@{
+    ViewData["Title"] = "Thông báo";
+    var isManager = ViewBag.IsManager as bool? ?? false;
+    var recipients = ViewBag.Recipients as List<ManagerUserVm> ?? new List<ManagerUserVm>();
+}
+
+<div class="notification-gmail">
+    <partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+    <div class="gmail-shell @(isManager ? string.Empty : "gmail-shell--staff")">
+        @if (isManager)
+        {
+            <aside class="gmail-compose-panel card">
+                <div class="card-body">
+                    <h5 class="gmail-title">Soạn thông báo</h5>
+                    <form asp-action="Create" method="post" class="gmail-compose-form" id="notifyComposeForm">
+                        @Html.AntiForgeryToken()
+
+                        <div class="mb-3">
+                            <label class="form-label">Tiêu đề</label>
+                            <input name="Title" class="form-control" maxlength="250" required />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Nội dung</label>
+                            <textarea name="Content" class="form-control" rows="6" maxlength="4000" required></textarea>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="sendToAll" name="SendToAll" value="true" checked />
+                            <label class="form-check-label" for="sendToAll">Gửi tất cả nhân sự</label>
+                        </div>
+
+                        <div class="mb-3" id="recipientContainer">
+                            <label class="form-label">Gửi riêng cho</label>
+                            <div class="recipient-picker" id="recipientPicker" data-users='@Html.Raw(System.Text.Json.JsonSerializer.Serialize(recipients.Select(x => new { username = x.Username, fullName = x.FullName })))'>
+                                <div class="recipient-chip-list" id="recipientChipList"></div>
+                                <input type="text" class="form-control recipient-input" id="recipientSearchInput" placeholder="Tìm theo tên hoặc username..." autocomplete="off" />
+                                <div class="recipient-suggest" id="recipientSuggest"></div>
+                                <div id="recipientHiddenInputs"></div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Gửi thông báo</button>
+                    </form>
+                </div>
+            </aside>
+        }
+
+        <section class="gmail-list card">
+            <div class="gmail-list-toolbar">
+                <h4>Hộp thư thông báo</h4>
+                <div class="notification-filter-group">
+                    <select id="notificationSendModeFilter" class="form-select">
+                        <option value="any" selected>Tất cả</option>
+                        <option value="broadcast">Gửi All</option>
+                        <option value="private">Gửi riêng</option>
+                    </select>
+                    <input id="notificationFilter" type="text" class="form-control" placeholder="Tìm theo tiêu đề hoặc nội dung..." />
+                </div>
+            </div>
+
+            <div class="gmail-list-rows" id="notificationRows">
+                @if (Model.Count == 0)
+                {
+                    <div class="gmail-empty">Chưa có thông báo nào.</div>
+                }
+                else
+                {
+                    @foreach (var item in Model)
+                    {
+                        <a asp-action="Detail" asp-route-id="@item.NotificationId" class="gmail-row @(item.IsRead ? "is-read" : "is-unread")" data-search="@($"{item.Title} {item.Preview}".ToLowerInvariant())" data-send-mode="@(item.SendToAll ? "broadcast" : "private")">
+                            <div class="gmail-row-left">
+                                <span class="gmail-dot"></span>
+                                <span class="gmail-from">@item.CreatedByFullName</span>
+                            </div>
+                            <div class="gmail-row-center">
+                                <span class="gmail-subject">@item.Title</span>
+                                <span class="gmail-snippet">@item.Preview</span>
+                            </div>
+                            <div class="gmail-row-right">
+                                @if (item.SendToAll)
+                                {
+                                    <span class="badge text-bg-light border notification-send-all-badge">All</span>
+                                }
+                                <span class="gmail-time">@item.CreatedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                            </div>
+                        </a>
+                    }
+                }
+            </div>
+
+            <div class="catalog-footer p-3">
+                <div class="catalog-pager" id="notificationPager"></div>
+                <div class="catalog-page-size">
+                    <label for="notificationPageSize" class="form-label mb-0">Hiển thị</label>
+                    <select id="notificationPageSize" class="form-select form-select-sm">
+                        <option value="10" selected>10</option>
+                        <option value="15">15</option>
+                        <option value="20">20</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const sendAll = document.getElementById('sendToAll');
+            const recipientPicker = document.getElementById('recipientPicker');
+            const recipientSearchInput = document.getElementById('recipientSearchInput');
+            const recipientSuggest = document.getElementById('recipientSuggest');
+            const recipientChipList = document.getElementById('recipientChipList');
+            const recipientHiddenInputs = document.getElementById('recipientHiddenInputs');
+            const recipientContainer = document.getElementById('recipientContainer');
+            const form = document.getElementById('notifyComposeForm');
+            const filterInput = document.getElementById('notificationFilter');
+            const sendModeFilter = document.getElementById('notificationSendModeFilter');
+            const rows = Array.from(document.querySelectorAll('.gmail-row'));
+            const notificationPager = document.getElementById('notificationPager');
+            const notificationPageSize = document.getElementById('notificationPageSize');
+            let currentPage = 1;
+
+            function renderNotificationList() {
+                if (!(notificationPager instanceof HTMLElement) || !(notificationPageSize instanceof HTMLSelectElement)) {
+                    return;
+                }
+                const pageSize = Number.parseInt(notificationPageSize.value, 10) || 10;
+                const keyword = (filterInput?.value || '').toLowerCase().trim();
+                const sendMode = sendModeFilter instanceof HTMLSelectElement ? sendModeFilter.value : 'any';
+                const matched = rows.filter(row => {
+                    const searchText = row.getAttribute('data-search') || '';
+                    const rowSendMode = row.getAttribute('data-send-mode') || 'private';
+                    const matchesKeyword = !keyword || searchText.includes(keyword);
+                    const matchesSendMode = sendMode === 'any' || rowSendMode === sendMode;
+                    return matchesKeyword && matchesSendMode;
+                });
+
+                rows.forEach(r => r.style.display = 'none');
+
+                const totalPages = Math.max(1, Math.ceil(matched.length / pageSize));
+                if (currentPage > totalPages) currentPage = totalPages;
+                const start = (currentPage - 1) * pageSize;
+                matched.slice(start, start + pageSize).forEach(r => r.style.display = '');
+
+                window.renderPagination({
+                    pager: notificationPager,
+                    totalPages,
+                    currentPage,
+                    onPageChange: page => {
+                        currentPage = page;
+                        renderNotificationList();
+                    }
+                });
+            }
+
+            let userSeed = [];
+            const selectedUsernames = new Set();
+
+            if (recipientPicker) {
+                try {
+                    userSeed = JSON.parse(recipientPicker.getAttribute('data-users') || '[]');
+                } catch {
+                    userSeed = [];
+                }
+            }
+
+            function escapeHtml(value) {
+                return (value || '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", '&#39;');
+            }
+
+            function renderRecipientHiddenInputs() {
+                if (!recipientHiddenInputs) return;
+                recipientHiddenInputs.innerHTML = '';
+                let index = 0;
+                for (const username of selectedUsernames) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'RecipientUsernames';
+                    input.value = username;
+                    input.id = `recipientHidden_${index++}`;
+                    recipientHiddenInputs.appendChild(input);
+                }
+            }
+
+            function renderRecipientChips() {
+                if (!recipientChipList) return;
+                recipientChipList.innerHTML = '';
+                for (const username of selectedUsernames) {
+                    const user = userSeed.find(x => x.username === username);
+                    const chip = document.createElement('span');
+                    chip.className = 'recipient-chip';
+                    chip.innerHTML = `<span>${escapeHtml((user?.fullName || username) + ' (' + username + ')')}</span><button type="button" class="recipient-chip-remove" data-user="${escapeHtml(username)}" aria-label="Bỏ người nhận">x</button>`;
+                    recipientChipList.appendChild(chip);
+                }
+
+                for (const removeBtn of recipientChipList.querySelectorAll('.recipient-chip-remove')) {
+                    removeBtn.addEventListener('click', function () {
+                        const username = removeBtn.getAttribute('data-user');
+                        if (!username) return;
+                        selectedUsernames.delete(username);
+                        renderRecipientChips();
+                        renderRecipientHiddenInputs();
+                        renderSuggestions();
+                    });
+                }
+            }
+
+            function renderSuggestions() {
+                if (!recipientSuggest || !recipientSearchInput) return;
+                const keyword = (recipientSearchInput.value || '').trim().toLowerCase();
+                const filtered = userSeed
+                    .filter(u => !selectedUsernames.has(u.username))
+                    .filter(u => {
+                        if (!keyword) return true;
+                        const fullName = (u.fullName || '').toLowerCase();
+                        const username = (u.username || '').toLowerCase();
+                        return fullName.includes(keyword) || username.includes(keyword);
+                    })
+                    .slice(0, 8);
+
+                if (!filtered.length || sendAll?.checked) {
+                    recipientSuggest.style.display = 'none';
+                    recipientSuggest.innerHTML = '';
+                    return;
+                }
+
+                recipientSuggest.style.display = 'block';
+                recipientSuggest.innerHTML = filtered
+                    .map(u => `<button type="button" class="recipient-option" data-user="${escapeHtml(u.username)}">${escapeHtml(u.fullName || u.username)} <span class="recipient-option-user">(${escapeHtml(u.username)})</span></button>`)
+                    .join('');
+
+                for (const option of recipientSuggest.querySelectorAll('.recipient-option')) {
+                    option.addEventListener('click', function () {
+                        const username = option.getAttribute('data-user');
+                        if (!username) return;
+                        selectedUsernames.add(username);
+                        recipientSearchInput.value = '';
+                        renderRecipientChips();
+                        renderRecipientHiddenInputs();
+                        renderSuggestions();
+                        recipientSearchInput.focus();
+                    });
+                }
+            }
+
+            function syncRecipientState() {
+                if (!sendAll || !recipientSearchInput || !recipientContainer) return;
+                const isSendAll = sendAll.checked;
+                recipientSearchInput.disabled = isSendAll;
+                recipientContainer.classList.toggle('is-disabled', isSendAll);
+                if (isSendAll) {
+                    selectedUsernames.clear();
+                    renderRecipientChips();
+                    renderRecipientHiddenInputs();
+                }
+                renderSuggestions();
+            }
+
+            if (sendAll) {
+                sendAll.addEventListener('change', syncRecipientState);
+                syncRecipientState();
+            }
+
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    if (!sendAll || !recipientSearchInput) return;
+                    if (!sendAll.checked && selectedUsernames.size === 0) {
+                        e.preventDefault();
+                        alert('Vui lòng chọn ít nhất một người nhận khi không gửi tất cả.');
+                    }
+                });
+            }
+
+            if (recipientSearchInput) {
+                recipientSearchInput.addEventListener('focus', renderSuggestions);
+                recipientSearchInput.addEventListener('input', renderSuggestions);
+            }
+
+            document.addEventListener('click', function (event) {
+                if (!recipientPicker || !recipientSuggest) return;
+                if (!recipientPicker.contains(event.target)) {
+                    recipientSuggest.style.display = 'none';
+                }
+            });
+
+            renderRecipientChips();
+            renderRecipientHiddenInputs();
+            renderSuggestions();
+
+            if (filterInput) {
+                filterInput.addEventListener('input', function () {
+                    currentPage = 1;
+                    renderNotificationList();
+                });
+            }
+
+            if (sendModeFilter instanceof HTMLSelectElement) {
+                sendModeFilter.addEventListener('change', function () {
+                    currentPage = 1;
+                    renderNotificationList();
+                });
+            }
+
+            if (notificationPageSize instanceof HTMLSelectElement) {
+                notificationPageSize.addEventListener('change', function () {
+                    currentPage = 1;
+                    renderNotificationList();
+                });
+            }
+
+            renderNotificationList();
+        })();
+    </script>
+}

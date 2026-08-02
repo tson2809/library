@@ -1,0 +1,146 @@
+﻿@model Client_web.Models.ViewModels.DashboardVm
+@{
+    ViewData["Title"] = "Tổng quan";
+    var revenueMonths = Model.MonthlyRevenues
+        .Where(x => x.Month <= DateTime.Today.Month)
+        .OrderBy(x => x.Month)
+        .ToList();
+    var maxRevenue = revenueMonths.Count == 0 ? 0m : revenueMonths.Max(x => x.TotalFineCollected);
+    string Money(decimal value) => value.ToString("N0") + " đ";
+}
+
+<div class="manager-shell">
+    <partial name="~/Views/Shared/_ManagerSidebar.cshtml" />
+
+    <section class="manager-content">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="mb-1">Bảng điều khiển thư viện</h2>
+            </div>
+        </div>
+
+        <partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger">@ViewBag.Error</div>
+        }
+
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Đầu sách</h6><div class="metric">@Model.TotalBookTitles</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Bạn sao sách</h6><div class="metric">@Model.TotalBookCopies</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Bạn sao đang mượn</h6><div class="metric">@Model.BorrowedCopies</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Thành viên hoạt động</h6><div class="metric">@Model.ActiveMembers</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Phiếu mượn hôm nay</h6><div class="metric">@Model.TodayLoans</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Phiếu quá hạn</h6><div class="metric">@Model.OverdueLoans</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Bản sao lỗi (Mất/Hỏng)</h6><div class="metric">@Model.LostOrDamagedCopies</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Công nợ tiền phạt</h6><div class="metric">@Model.OutstandingFine.ToString("N0") đ</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Thu phạt tháng này</h6><div class="metric">@Money(Model.CollectedFineThisMonth)</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Doanh thu năm @Model.RevenueYear</h6><div class="metric">@Money(Model.RevenueThisYear)</div></div></div>
+            </div>
+            <div class="col-md-3">
+                <div class="card dashboard-card"><div class="card-body"><h6>Doanh thu tháng trước</h6><div class="metric">@Money(Model.RevenueLastMonth)</div></div></div>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-lg-12">
+                <div class="card dashboard-revenue-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                            <div>
+                                <h5 class="card-title mb-1">Doanh thu thu phạt theo tháng</h5>
+                                <div class="text-muted small">Biểu đồ năm @Model.RevenueYear, đơn vị VNĐ</div>
+                            </div>
+                            <div class="dashboard-revenue-total">@Money(Model.RevenueThisYear)</div>
+                        </div>
+
+                        @if (revenueMonths.Count == 0 || maxRevenue <= 0)
+                        {
+                            <div class="text-muted">Chưa có dữ liệu doanh thu.</div>
+                        }
+                        else
+                        {
+                            <div class="dashboard-revenue-chart">
+                                @foreach (var item in revenueMonths)
+                                {
+                                    var height = Math.Max(8, (int)Math.Round((double)(item.TotalFineCollected / maxRevenue * 100m)));
+                                    <div class="dashboard-revenue-month">
+                                        <div class="dashboard-revenue-value">@Money(item.TotalFineCollected)</div>
+                                        <div class="dashboard-revenue-bar-wrap">
+                                            <div class="dashboard-revenue-bar" style="height:@height%"></div>
+                                        </div>
+                                        <div class="dashboard-revenue-label">Tháng @(item.Month)</div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-lg-12">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Cảnh báo tồn kho</h5>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Loại</th>
+                                        <th>Mã</th>
+                                        <th>Tên sách</th>
+                                        <th>Chi tiết</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.InventoryAlerts.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="4" class="text-muted">Không có cảnh báo nào.</td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        foreach (var alert in Model.InventoryAlerts)
+                                        {
+                                            <tr>
+                                                <td>@(alert.AlertType == "LowStock" ? "Sắp hết" : "Chất lượng")</td>
+                                                <td>@alert.ItemCode</td>
+                                                <td>@alert.ItemName</td>
+                                                <td>@alert.Detail</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+

@@ -1,0 +1,37 @@
+@model Client_web.Models.ViewModels.NotificationDetailVm
+@{
+    ViewData["Title"] = "Chi tiết thông báo";
+}
+
+<div class="notification-gmail notification-detail">
+    <div class="card gmail-detail-card">
+        <div class="gmail-detail-head">
+            <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Quay lại danh sách</a>
+            <span class="gmail-detail-time">@Model.CreatedAt.ToString("dd/MM/yyyy HH:mm")</span>
+        </div>
+
+        <div class="gmail-detail-body">
+            <h2 class="gmail-detail-subject">@Model.Title</h2>
+
+            <div class="gmail-detail-meta">
+                <div><strong>Từ:</strong> @Model.CreatedByFullName (@Model.CreatedByUserName)</div>
+                <div>
+                    <strong>Đến:</strong>
+                    @if (Model.SendToAll)
+                    {
+                        <span>Tất cả nhân sự</span>
+                    }
+                    else
+                    {
+                        <span>@string.Join(", ", Model.Recipients ?? Enumerable.Empty<string>())</span>
+                    }
+                </div>
+                <div><strong>Trạng thái:</strong> @(Model.IsRead ? "Đã đọc" : "Chưa đọc")</div>
+            </div>
+
+            <div class="gmail-message-body">
+                @Html.Raw((Model.Content ?? string.Empty).Replace("\n", "<br />"))
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,49 @@
+@model List<Client_web.Models.ViewModels.OverdueLoanVm>
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <title>In danh sách quá hạn</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { margin-bottom: 8px; }
+        .meta { margin-bottom: 16px; color: #555; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #333; padding: 6px; font-size: 12px; }
+        th { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h2>Danh sách phiếu mượn quá hạn</h2>
+    <div class="meta">In lúc: @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Phiếu</th>
+                <th>Thành viên</th>
+                <th>Ngày mượn</th>
+                <th>Hạn trả</th>
+                <th>Trễ (ngày)</th>
+                <th>Số cuốn</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>#@item.LoanId</td>
+                    <td>@item.Member</td>
+                    <td>@item.LoanDate.ToString("dd/MM/yyyy")</td>
+                    <td>@item.DueDate.ToString("dd/MM/yyyy")</td>
+                    <td>@item.DaysOverdue</td>
+                    <td>@item.ItemCount</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <script>window.print();</script>
+</body>
+</html>

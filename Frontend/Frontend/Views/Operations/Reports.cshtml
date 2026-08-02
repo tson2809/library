@@ -1,0 +1,475 @@
+@model Client_web.Models.ViewModels.ManagerReportsVm
+@{
+    ViewData["Title"] = "Báo cáo vận hành";
+    var currentYear = DateTime.Today.Year;
+}
+
+<div class="manager-shell">
+    <partial name="~/Views/Shared/_ManagerSidebar.cshtml" />
+
+    <section class="manager-content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="mb-0">Báo cáo vận hành</h3>
+            <div class="d-flex gap-2">
+                <a asp-action="ExportTopBooksExcel" class="btn btn-outline-primary">Xuất Excel</a>
+                <a asp-action="ExportMonthlyRevenueExcel" asp-route-year="@Model.RevenueYear" class="btn btn-dark">Xuất Excel doanh thu tháng</a>
+            </div>
+        </div>
+
+        <partial name="~/Views/Shared/_FlashMessages.cshtml" />
+
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger">@ViewBag.Error</div>
+        }
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-3"><div class="card"><div class="card-body"><h6>Phiếu đang mượn</h6><div class="h4 mb-0">@Model.BorrowingLoanCount</div></div></div></div>
+            <div class="col-md-3"><div class="card"><div class="card-body"><h6>Phiếu quá hạn</h6><div class="h4 mb-0">@Model.OverdueLoanCount</div></div></div></div>
+            <div class="col-md-3"><div class="card"><div class="card-body"><h6>Bản sao còn sẵn</h6><div class="h4 mb-0">@Model.TotalAvailableCopies</div></div></div></div>
+            <div class="col-md-3"><div class="card"><div class="card-body"><h6>Bản sao đang mượn</h6><div class="h4 mb-0">@Model.TotalBorrowedCopies</div></div></div></div>
+        </div>
+
+        @if (Model.FrequentBorrowers.Count > 0)
+        {
+            <div class="alert alert-warning">
+                <strong>Cảnh báo thành viên mượn nhiều:</strong>
+                @string.Join(", ", Model.FrequentBorrowers.Select(x => $"{x.Name} ({x.LoanCount} phiếu)"))
+            </div>
+        }
+
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0">Top sách mượn nhiều</h5>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped align-middle mb-0" id="topBooksTable">
+                                <thead>
+                                    <tr>
+                                        <th>Tên sách</th>
+                                        <th>ISBN</th>
+                                        <th>Lượt mượn</th>
+                                        <th>Còn</th>
+                                        <th>Tổng</th>
+                                        <th>Chi tiết</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                @if (Model.TopBorrowedBooks.Count == 0)
+                                {
+                                    <tr><td colspan="6" class="text-muted">Không có dữ liệu.</td></tr>
+                                }
+                                else
+                                {
+                                    foreach (var item in Model.TopBorrowedBooks)
+                                    {
+                                        <tr data-paginate="books">
+                                            <td>@item.Title</td>
+                                            <td>@item.Isbn</td>
+                                            <td>@item.BorrowCount</td>
+                                            <td>@item.AvailableCopies</td>
+                                            <td>@item.TotalCopies</td>
+                                            <td>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary btn-open-book-detail"
+                                                        data-title="@item.Title"
+                                                        data-isbn="@item.Isbn"
+                                                        data-borrow-count="@item.BorrowCount"
+                                                        data-available="@item.AvailableCopies"
+                                                        data-total="@item.TotalCopies"
+                                                        data-active-borrowers='@System.Text.Json.JsonSerializer.Serialize(item.ActiveBorrowers)'
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#bookDetailModal">
+                                                    Chi tiết
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="catalog-footer mt-3">
+                            <div class="catalog-pager" id="topBooksPager"></div>
+                            <div class="catalog-page-size">
+                                <label for="topBooksPageSize" class="form-label mb-0">Hiển thị</label>
+                                <select id="topBooksPageSize" class="form-select form-select-sm">
+                                    <option value="5" selected>5</option>
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title mb-2">Top người mượn nhiều</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped align-middle mb-0" id="topMembersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Thành viên</th>
+                                        <th>Số phiếu</th>
+                                        <th>Tổng cuốn</th>
+                                        <th>Chi tiết</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                @if (Model.MemberBorrowRows.Count == 0)
+                                {
+                                    <tr><td colspan="4" class="text-muted">Không có dữ liệu.</td></tr>
+                                }
+                                else
+                                {
+                                    foreach (var item in Model.MemberBorrowRows)
+                                    {
+                                        <tr data-paginate="members">
+                                            <td>@item.Name</td>
+                                            <td>@item.LoanCount</td>
+                                            <td>@item.TotalBorrowedItems</td>
+                                            <td>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary btn-open-member-detail"
+                                                        data-name="@item.Name"
+                                                        data-loan-count="@item.LoanCount"
+                                                        data-total-items="@item.TotalBorrowedItems"
+                                                        data-borrowed-titles='@System.Text.Json.JsonSerializer.Serialize(item.BorrowedTitles)'
+                                                        data-recent-loans='@System.Text.Json.JsonSerializer.Serialize(item.RecentLoans)'
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#memberDetailModal">
+                                                    Chi tiết
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="catalog-footer mt-3">
+                            <div class="catalog-pager" id="topMembersPager"></div>
+                            <div class="catalog-page-size">
+                                <label for="topMembersPageSize" class="form-label mb-0">Hiển thị</label>
+                                <select id="topMembersPageSize" class="form-select form-select-sm">
+                                    <option value="5" selected>5</option>
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="card-title mb-0">Thu phạt theo tháng</h5>
+                    <form method="get" asp-action="Reports" class="d-flex gap-2 align-items-center">
+                        <label for="year" class="small text-muted mb-0">Năm</label>
+                        <select id="year" name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+                            @for (var year = currentYear - 4; year <= currentYear + 1; year++)
+                            {
+                                if (year == Model.RevenueYear)
+                                {
+                                    <option value="@year" selected>@year</option>
+                                }
+                                else
+                                {
+                                    <option value="@year">@year</option>
+                                }
+                            }
+                        </select>
+                    </form>
+                </div>
+                @if (ViewBag.RevenueError != null)
+                {
+                    <div class="alert alert-danger">@ViewBag.RevenueError</div>
+                }
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0" id="monthlyRevenueTable">
+                        <thead>
+                            <tr>
+                                <th>Tháng</th>
+                                <th>Tổng tiền phạt thu</th>
+                                <th>Số lượt thu</th>
+                                <th>Chi tiết</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.MonthlyRevenues.Count == 0)
+                            {
+                                <tr><td colspan="4" class="text-muted">Không có dữ liệu theo năm đã chọn.</td></tr>
+                            }
+                            else
+                            {
+                                foreach (var item in Model.MonthlyRevenues)
+                                {
+                                    <tr data-paginate="revenue">
+                                        <td>Tháng @item.Month</td>
+                                        <td>@item.TotalFineCollected.ToString("N0") đ</td>
+                                        <td>@item.PaymentCount</td>
+                                        <td>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary btn-open-revenue-detail"
+                                                    data-year="@Model.RevenueYear"
+                                                    data-month="@item.Month"
+                                                    data-amount="@item.TotalFineCollected"
+                                                    data-payment-count="@item.PaymentCount"
+                                                    data-fine-details='@System.Text.Json.JsonSerializer.Serialize(item.FineDetails)'
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#revenueDetailModal">
+                                                Chi tiết
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="catalog-footer mt-3">
+                    <div class="catalog-pager" id="monthlyRevenuePager"></div>
+                    <div class="catalog-page-size">
+                        <label for="monthlyRevenuePageSize" class="form-label mb-0">Hiển thị</label>
+                        <select id="monthlyRevenuePageSize" class="form-select form-select-sm">
+                            <option value="5" selected>5</option>
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<div class="modal fade" id="bookDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết sách mượn nhiều</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body" id="bookDetailContent"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="memberDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết thành viên mượn nhiều</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body" id="memberDetailContent"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="revenueDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết thu phạt theo tháng</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body" id="revenueDetailContent"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            function wirePagination(rowSelector, pagerId, pageSizeId) {
+                const rows = Array.from(document.querySelectorAll(rowSelector));
+                const pager = document.getElementById(pagerId);
+                const pageSizeSelect = document.getElementById(pageSizeId);
+                if (!rows.length || !(pager instanceof HTMLElement) || !(pageSizeSelect instanceof HTMLSelectElement)) {
+                    return;
+                }
+
+                let currentPage = 1;
+                let pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+
+                const render = () => {
+                    rows.forEach(r => r.style.display = 'none');
+                    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+                    if (currentPage > totalPages) currentPage = totalPages;
+                    const start = (currentPage - 1) * pageSize;
+                    rows.slice(start, start + pageSize).forEach(r => r.style.display = '');
+
+                    window.renderPagination({
+                        pager,
+                        totalPages,
+                        currentPage,
+                        onPageChange: page => {
+                            currentPage = page;
+                            render();
+                        }
+                    });
+                };
+
+                pageSizeSelect.addEventListener('change', () => {
+                    pageSize = Number.parseInt(pageSizeSelect.value, 10) || 5;
+                    currentPage = 1;
+                    render();
+                });
+
+                render();
+            }
+
+            wirePagination('tr[data-paginate="books"]', 'topBooksPager', 'topBooksPageSize');
+            wirePagination('tr[data-paginate="members"]', 'topMembersPager', 'topMembersPageSize');
+            wirePagination('tr[data-paginate="revenue"]', 'monthlyRevenuePager', 'monthlyRevenuePageSize');
+
+            const formatNumber = value => Number(value || 0).toLocaleString('vi-VN');
+
+            const bookDetailContent = document.getElementById('bookDetailContent');
+            document.querySelectorAll('.btn-open-book-detail').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (!(bookDetailContent instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const title = button.getAttribute('data-title') || '';
+                    const isbn = button.getAttribute('data-isbn') || '';
+                    const borrowCount = Number(button.getAttribute('data-borrow-count') || '0');
+                    const available = Number(button.getAttribute('data-available') || '0');
+                    const total = Number(button.getAttribute('data-total') || '0');
+                    const borrowedNow = Math.max(0, total - available);
+                    let activeBorrowers = [];
+                    try {
+                        activeBorrowers = JSON.parse(button.getAttribute('data-active-borrowers') || '[]');
+                    } catch {
+                        activeBorrowers = [];
+                    }
+
+                    const borrowersHtml = Array.isArray(activeBorrowers) && activeBorrowers.length > 0
+                        ? `<div class="table-responsive mt-2"><table class="table table-sm table-striped align-middle mb-0"><thead><tr><th>Thành viên</th><th>Phiếu</th><th>Hạn trả</th><th>Trạng thái</th></tr></thead><tbody>${activeBorrowers.map(x => `<tr><td>${x.memberName || x.MemberName || '-'}</td><td>#${x.loanId || x.LoanId || '-'}</td><td>${x.dueDate || x.DueDate || '-'}</td><td>${x.status || x.Status || '-'}</td></tr>`).join('')}</tbody></table></div>`
+                        : '<div class="text-muted mt-2">Hiện chưa có người đang mượn đầu sách này.</div>';
+
+                    bookDetailContent.innerHTML = `
+                        <div class="mb-2"><strong>Tên sách:</strong> ${title}</div>
+                        <div class="mb-2"><strong>ISBN:</strong> ${isbn || '-'}</div>
+                        <div class="mb-2"><strong>Lượt mượn tích lũy:</strong> ${formatNumber(borrowCount)}</div>
+                        <div class="mb-2"><strong>Tồn kho hiện tại:</strong> ${formatNumber(available)} / ${formatNumber(total)} bản sẵn</div>
+                        <div class="mb-1"><strong>Đang được mượn:</strong> ${formatNumber(borrowedNow)} bản</div>
+                        <div class="mt-3 mb-1"><strong>Ai đang mượn:</strong></div>
+                        ${borrowersHtml}
+                    `;
+                });
+            });
+
+            const memberDetailContent = document.getElementById('memberDetailContent');
+            document.querySelectorAll('.btn-open-member-detail').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (!(memberDetailContent instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const name = button.getAttribute('data-name') || '';
+                    const loanCount = Number(button.getAttribute('data-loan-count') || '0');
+                    const totalItems = Number(button.getAttribute('data-total-items') || '0');
+
+                    let borrowedTitles = [];
+                    let recentLoans = [];
+                    try {
+                        borrowedTitles = JSON.parse(button.getAttribute('data-borrowed-titles') || '[]');
+                    } catch {
+                        borrowedTitles = [];
+                    }
+                    try {
+                        recentLoans = JSON.parse(button.getAttribute('data-recent-loans') || '[]');
+                    } catch {
+                        recentLoans = [];
+                    }
+
+                    const titlesHtml = Array.isArray(borrowedTitles) && borrowedTitles.length > 0
+                        ? `<div>${borrowedTitles.map(x => `<span class="badge bg-white text-dark border me-1 mb-1">${x}</span>`).join('')}</div>`
+                        : '<div class="text-muted">Không có dữ liệu tên sách.</div>';
+
+                    const loansHtml = Array.isArray(recentLoans) && recentLoans.length > 0
+                        ? `<div class="table-responsive mt-2"><table class="table table-sm table-striped align-middle mb-0"><thead><tr><th>Phiếu</th><th>Ngày mượn</th><th>Hạn trả</th><th>Trạng thái</th><th>Số cuốn</th><th>Đầu sách</th></tr></thead><tbody>${recentLoans.map(loan => {
+                            const titles = Array.isArray(loan.bookTitles || loan.BookTitles)
+                                ? (loan.bookTitles || loan.BookTitles).join(', ')
+                                : '';
+                            return `<tr><td>#${loan.loanId || loan.LoanId}</td><td>${loan.loanDate || loan.LoanDate || '-'}</td><td>${loan.dueDate || loan.DueDate || '-'}</td><td>${loan.status || loan.Status || '-'}</td><td>${loan.itemCount || loan.ItemCount || 0}</td><td>${titles || '-'}</td></tr>`;
+                        }).join('')}</tbody></table></div>`
+                        : '<div class="text-muted mt-2">Không có phiếu gần đây.</div>';
+
+                    memberDetailContent.innerHTML = `
+                        <div class="mb-2"><strong>Thành viên:</strong> ${name}</div>
+                        <div class="mb-2"><strong>Tổng số phiếu:</strong> ${formatNumber(loanCount)}</div>
+                        <div class="mb-2"><strong>Tổng số cuốn đã mượn:</strong> ${formatNumber(totalItems)}</div>
+                        <div class="mb-1"><strong>Danh sách đầu sách đã mượn:</strong></div>
+                        ${titlesHtml}
+                        <div class="mt-3 mb-1"><strong>Các phiếu gần nhất:</strong></div>
+                        ${loansHtml}
+                    `;
+                });
+            });
+
+            const revenueDetailContent = document.getElementById('revenueDetailContent');
+            document.querySelectorAll('.btn-open-revenue-detail').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (!(revenueDetailContent instanceof HTMLElement)) {
+                        return;
+                    }
+
+                    const year = Number(button.getAttribute('data-year') || '0');
+                    const month = Number(button.getAttribute('data-month') || '0');
+                    const amount = Number(button.getAttribute('data-amount') || '0');
+                    const paymentCount = Number(button.getAttribute('data-payment-count') || '0');
+                    const avg = paymentCount > 0 ? amount / paymentCount : 0;
+                    let fineDetails = [];
+                    try {
+                        fineDetails = JSON.parse(button.getAttribute('data-fine-details') || '[]');
+                    } catch {
+                        fineDetails = [];
+                    }
+
+                    const detailsHtml = Array.isArray(fineDetails) && fineDetails.length > 0
+                        ? `<div class="table-responsive mt-3"><table class="table table-sm table-striped align-middle mb-0"><thead><tr><th>Thời gian thu</th><th>Thành viên bị phạt</th><th>Số tiền</th><th>Phiếu</th><th>Quyển sách</th></tr></thead><tbody>${fineDetails.map(item => {
+                            const paymentDate = item.paymentDate || item.PaymentDate || '-';
+                            const memberName = item.memberName || item.MemberName || '-';
+                            const memberCode = item.memberCode || item.MemberCode || '';
+                            const amountPaid = Number(item.amountPaid || item.AmountPaid || 0);
+                            const loanId = item.loanId || item.LoanId;
+                            const titles = Array.isArray(item.bookTitles || item.BookTitles)
+                                ? (item.bookTitles || item.BookTitles).join(', ')
+                                : '';
+                            return `<tr><td>${paymentDate}</td><td>${memberName}${memberCode ? ` (${memberCode})` : ''}</td><td>${formatNumber(amountPaid)} đ</td><td>${loanId ? `#${loanId}` : '-'}</td><td>${titles || '-'}</td></tr>`;
+                        }).join('')}</tbody></table></div>`
+                        : '<div class="text-muted mt-3">Không có giao dịch thu phạt chi tiết trong tháng này.</div>';
+
+                    revenueDetailContent.innerHTML = `
+                        <div class="mb-2"><strong>Kỳ báo cáo:</strong> Tháng ${month}/${year}</div>
+                        <div class="mb-2"><strong>Tổng tiền phạt đã thu:</strong> ${formatNumber(amount)} đ</div>
+                        <div class="mb-2"><strong>Số lượt thu:</strong> ${formatNumber(paymentCount)}</div>
+                        <div class="mb-0"><strong>Trung bình mỗi lượt thu:</strong> ${formatNumber(Math.round(avg))} đ</div>
+                        ${detailsHtml}
+                    `;
+                });
+            });
+        })();
+    </script>
+}
